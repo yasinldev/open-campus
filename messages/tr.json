@@ -1,0 +1,144 @@
+{
+  "common": {
+    "siteName": "Open Campus",
+    "siteDescription": "Öğrenmeyi yeniden tanımlıyoruz. Birlikte.",
+    "loading": "Yükleniyor...",
+    "readMore": "Devamını oku",
+    "learnMore": "Daha fazla bilgi",
+    "getStarted": "Başlayın",
+    "submit": "Gönder",
+    "close": "Kapat",
+    "back": "Geri",
+    "next": "İleri",
+    "previous": "Önceki"
+  },
+  "nav": {
+    "home": "Ana Sayfa",
+    "vision": "Vizyon",
+    "fellows": "Fellows",
+    "courses": "Dersler",
+    "research": "Araştırma",
+    "docs": "Dokümantasyon",
+    "blog": "Blog",
+    "community": "Topluluk",
+    "contribute": "Katkı Ver",
+    "join": "Katıl",
+    "faq": "SSS",
+    "contact": "İletişim",
+    "becomeEducator": "Eğitmen Ol"
+  },
+  "hero": {
+    "title": "Öğrenmeyi yeniden tanımlıyoruz. Birlikte.",
+    "subtitle": "AI Fellows ile desteklenen açık kaynak eğitim. Üretim odaklı ekosistemde öğrenin, geliştirin ve paylaşın.",
+    "ctaFellows": "Fellows'ı Keşfet",
+    "ctaCourses": "Derslere Göz At",
+    "ctaGithub": "GitHub'da Yıldız Ver"
+  },
+  "home": {
+    "whyTitle": "Neden Open Campus?",
+    "whySubtitle": "Yaklaşımımızın üç temel direği",
+    "pillar1Title": "AI Destekli Öğrenme",
+    "pillar1Desc": "Öğrenim yolculuğunuza özel AI Fellows ile kişisel rehberlik.",
+    "pillar2Title": "Açık Kaynak Akademi",
+    "pillar2Desc": "Kod, dersler ve araştırma—her yerde, herkes için erişilebilir.",
+    "pillar3Title": "Üretim Odaklı Ekosistem",
+    "pillar3Desc": "Teoriden uygulamaya, paylaşıma—gerçek dünya çözümleri üretin.",
+    "fellowsTitle": "Fellows'larımızla Tanışın",
+    "fellowsSubtitle": "Her konu için AI destekli rehberler",
+    "coursesTitle": "Öne Çıkan Dersler",
+    "coursesSubtitle": "Temellerden ileri seviyeye yapılandırılmış öğrenim yolları",
+    "communityTitle": "Topluluğumuza Katılın",
+    "communityDesc": "Eğitimin geleceğini inşa eden öğrenciler, katkıda bulunanlar ve eğitimcilerle bağlantı kurun.",
+    "newsletterTitle": "Güncel Kalın",
+    "newsletterDesc": "En son haberleri, ders güncellemelerini ve topluluk öne çıkanlarını alın.",
+    "newsletterPlaceholder": "E-posta adresiniz",
+    "newsletterButton": "Abone Ol",
+    "newsletterSuccess": "Abone olduğunuz için teşekkürler!"
+  },
+  "fellows": {
+    "title": "AI Fellows",
+    "subtitle": "Her konu için kişisel rehberleriniz",
+    "filterAll": "Tümü",
+    "viewDetails": "Detayları görüntüle"
+  },
+  "courses": {
+    "title": "Dersler",
+    "subtitle": "Yapılandırılmış öğrenim yolları",
+    "level": {
+      "intro": "Başlangıç",
+      "intermediate": "Orta",
+      "advanced": "İleri"
+    },
+    "syllabusTitle": "Ders İçeriği",
+    "resourcesTitle": "Kaynaklar",
+    "fellowsTitle": "İlgili Fellows"
+  },
+  "research": {
+    "title": "Araştırma & Projeler",
+    "subtitle": "Topluluğumuzdan en son çalışmalar",
+    "abstractTitle": "Özet",
+    "linksTitle": "Bağlantılar",
+    "metricsTitle": "Metrikler",
+    "publishedOn": "Yayınlanma"
+  },
+  "blog": {
+    "title": "Blog",
+    "subtitle": "Haberler, güncellemeler ve görüşler",
+    "readTime": "dk okuma",
+    "publishedOn": "Yayınlanma",
+    "author": "Yazar",
+    "relatedPosts": "İlgili yazılar"
+  },
+  "community": {
+    "title": "Topluluk",
+    "subtitle": "Bağlan, işbirliği yap ve katkıda bulun",
+    "discordTitle": "Discord",
+    "discordDesc": "Gerçek zamanlı tartışmalar ve destek için Discord sunucumuza katılın.",
+    "githubTitle": "GitHub",
+    "githubDesc": "Açık kaynak projelerimize katkıda bulunun ve kod tabanını keşfedin.",
+    "codeOfConductTitle": "Davranış Kuralları",
+    "codeOfConductDesc": "Kapsayıcı ve saygılı bir topluluk oluşturmayı taahhüt ediyoruz."
+  },
+  "contribute": {
+    "title": "Katkı Ver",
+    "subtitle": "Eğitimin geleceğini birlikte inşa edelim",
+    "howToTitle": "Nasıl Katkıda Bulunulur",
+    "howToDesc": "Kod, içerik veya geri bildirim—her katkı önemlidir.",
+    "issuesTitle": "İlk Adım İçin İssue'lar",
+    "issuesDesc": "Katkıda bulunmaya yeniyseniz buradan başlayın."
+  },
+  "join": {
+    "title": "Open Campus'a Katıl",
+    "subtitle": "Bir Open Campus Fellow olun",
+    "formName": "Ad Soyad",
+    "formEmail": "E-posta",
+    "formField": "İlgi alanınız",
+    "formMessage": "Neden katılmak istiyorsunuz?",
+    "formSubmit": "Başvuru gönder",
+    "formSuccess": "Başvurunuz başarıyla gönderildi!",
+    "whatWeExpectTitle": "Neleri Arıyoruz",
+    "whatWeExpectDesc": "Öğrenme tutkusu, işbirliğine bağlılık ve inşa etme isteği."
+  },
+  "contact": {
+    "title": "Bize Ulaşın",
+    "subtitle": "Open Campus ekibiyle iletişime geçin",
+    "formName": "İsim",
+    "formEmail": "E-posta",
+    "formMessage": "Mesaj",
+    "formSubmit": "Mesaj gönder",
+    "formSuccess": "Mesajınız başarıyla gönderildi!"
+  },
+  "faq": {
+    "title": "Sık Sorulan Sorular",
+    "subtitle": "Bilmeniz gereken her şey"
+  },
+  "footer": {
+    "quickLinks": "Hızlı Bağlantılar",
+    "resources": "Kaynaklar",
+    "community": "Topluluk",
+    "legal": "Yasal",
+    "privacy": "Gizlilik Politikası",
+    "terms": "Kullanım Şartları",
+    "copyright": "© 2025 Open Campus. Tüm hakları saklıdır."
+  }
+}

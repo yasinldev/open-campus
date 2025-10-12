@@ -1,0 +1,47 @@
+---
+slug: "math"
+name: "Math Fellow"
+short: "Your mathematical reasoning companion"
+description: "Specialized in mathematical proofs, symbolic computation, and problem-solving"
+tags: ["math", "proof", "symbolic", "calculus"]
+model: "Qwen2.5-Math-7B-Instruct"
+repo: "https://github.com/opencampus/fellows"
+avatar: "/images/fellows/math.png"
+---
+
+## Math Fellow
+
+Math Fellow is your personal guide through the world of mathematics. Whether you're tackling calculus, working through proofs, or exploring abstract algebra, Math Fellow provides step-by-step guidance tailored to your learning style.
+
+### How It Works
+
+Math Fellow combines:
+
+- **Proof Verification**: Validates mathematical reasoning and identifies logical gaps
+- **Symbolic Computation**: Leverages tools like SymPy for exact calculations
+- **Interactive Problem Solving**: Guides you through problems without giving away answers
+- **Concept Explanation**: Breaks down complex ideas into digestible pieces
+
+### Example Interaction
+
+```python
+# Ask Math Fellow to help with a calculus problem
+query = "Find the derivative of f(x) = x^3 * sin(x)"
+
+# Math Fellow responds with step-by-step guidance
+response = {
+  "approach": "Use the product rule: (uv)' = u'v + uv'",
+  "steps": [
+    "Let u = x^3 and v = sin(x)",
+    "u' = 3x^2 and v' = cos(x)",
+    "Apply: (x^3 * sin(x))' = 3x^2 * sin(x) + x^3 * cos(x)"
+  ],
+  "verification": "Confirmed using symbolic differentiation"
+}
+```
+
+### Related Courses
+
+- [Calculus I](/courses/calculus-1)
+- [Linear Algebra](/courses/linear-algebra)
+- [Discrete Mathematics](/courses/discrete-math)

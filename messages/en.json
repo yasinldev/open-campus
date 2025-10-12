@@ -1,0 +1,144 @@
+{
+  "common": {
+    "siteName": "Open Campus",
+    "siteDescription": "Redefining Learning. Together.",
+    "loading": "Loading...",
+    "readMore": "Read more",
+    "learnMore": "Learn more",
+    "getStarted": "Get started",
+    "submit": "Submit",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous"
+  },
+  "nav": {
+    "home": "Home",
+    "vision": "Vision",
+    "fellows": "Fellows",
+    "courses": "Courses",
+    "research": "Research",
+    "docs": "Docs",
+    "blog": "Blog",
+    "community": "Community",
+    "contribute": "Contribute",
+    "join": "Join",
+    "faq": "FAQ",
+    "contact": "Contact",
+    "becomeEducator": "Become Educator"
+  },
+  "hero": {
+    "title": "Redefining Learning. Together.",
+    "subtitle": "Open-source education powered by AI Fellows. Learn, build, and share in a production-focused ecosystem.",
+    "ctaFellows": "Explore Fellows",
+    "ctaCourses": "Browse Courses",
+    "ctaGithub": "Star on GitHub"
+  },
+  "home": {
+    "whyTitle": "Why Open Campus?",
+    "whySubtitle": "Three pillars of our approach",
+    "pillar1Title": "AI-Powered Learning",
+    "pillar1Desc": "Personal guidance through AI Fellows tailored to your learning journey.",
+    "pillar2Title": "Open-Source Academy",
+    "pillar2Desc": "Code, courses, and research—accessible to everyone, everywhere.",
+    "pillar3Title": "Production-First Ecosystem",
+    "pillar3Desc": "From theory to application to sharing—build real-world solutions.",
+    "fellowsTitle": "Meet Our Fellows",
+    "fellowsSubtitle": "AI-powered guides for every subject",
+    "coursesTitle": "Featured Courses",
+    "coursesSubtitle": "Structured learning paths from fundamentals to advanced topics",
+    "communityTitle": "Join Our Community",
+    "communityDesc": "Connect with learners, contributors, and educators building the future of education.",
+    "newsletterTitle": "Stay Updated",
+    "newsletterDesc": "Get the latest news, course updates, and community highlights.",
+    "newsletterPlaceholder": "Enter your email",
+    "newsletterButton": "Subscribe",
+    "newsletterSuccess": "Thanks for subscribing!"
+  },
+  "fellows": {
+    "title": "AI Fellows",
+    "subtitle": "Your personal guides for every subject",
+    "filterAll": "All",
+    "viewDetails": "View details"
+  },
+  "courses": {
+    "title": "Courses",
+    "subtitle": "Structured learning paths",
+    "level": {
+      "intro": "Introductory",
+      "intermediate": "Intermediate",
+      "advanced": "Advanced"
+    },
+    "syllabusTitle": "Syllabus",
+    "resourcesTitle": "Resources",
+    "fellowsTitle": "Related Fellows"
+  },
+  "research": {
+    "title": "Research & Projects",
+    "subtitle": "Cutting-edge work from our community",
+    "abstractTitle": "Abstract",
+    "linksTitle": "Links",
+    "metricsTitle": "Metrics",
+    "publishedOn": "Published on"
+  },
+  "blog": {
+    "title": "Blog",
+    "subtitle": "News, updates, and insights",
+    "readTime": "min read",
+    "publishedOn": "Published on",
+    "author": "By",
+    "relatedPosts": "Related posts"
+  },
+  "community": {
+    "title": "Community",
+    "subtitle": "Connect, collaborate, and contribute",
+    "discordTitle": "Discord",
+    "discordDesc": "Join our Discord server for real-time discussions and support.",
+    "githubTitle": "GitHub",
+    "githubDesc": "Contribute to our open-source projects and explore the codebase.",
+    "codeOfConductTitle": "Code of Conduct",
+    "codeOfConductDesc": "We are committed to fostering an inclusive and respectful community."
+  },
+  "contribute": {
+    "title": "Contribute",
+    "subtitle": "Help us build the future of education",
+    "howToTitle": "How to Contribute",
+    "howToDesc": "Whether it's code, content, or feedback—every contribution matters.",
+    "issuesTitle": "Good First Issues",
+    "issuesDesc": "Start here if you're new to contributing."
+  },
+  "join": {
+    "title": "Join Open Campus",
+    "subtitle": "Become an Open Campus Fellow",
+    "formName": "Full name",
+    "formEmail": "Email",
+    "formField": "Field of interest",
+    "formMessage": "Why do you want to join?",
+    "formSubmit": "Submit application",
+    "formSuccess": "Application submitted successfully!",
+    "whatWeExpectTitle": "What We're Looking For",
+    "whatWeExpectDesc": "Passion for learning, commitment to collaboration, and drive to build."
+  },
+  "contact": {
+    "title": "Contact Us",
+    "subtitle": "Get in touch with the Open Campus team",
+    "formName": "Name",
+    "formEmail": "Email",
+    "formMessage": "Message",
+    "formSubmit": "Send message",
+    "formSuccess": "Message sent successfully!"
+  },
+  "faq": {
+    "title": "Frequently Asked Questions",
+    "subtitle": "Everything you need to know"
+  },
+  "footer": {
+    "quickLinks": "Quick Links",
+    "resources": "Resources",
+    "community": "Community",
+    "legal": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "copyright": "© 2025 Open Campus. All rights reserved."
+  }
+}
