@@ -1,33 +1,68 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Brain,
-  Send,
-  Sparkles,
-  BookOpen,
-  MessageSquare,
-  Lightbulb,
-  Code,
   Calculator,
+  Code,
+  Sparkles,
   Zap,
   ChevronLeft,
-  Plus,
-  Trash2,
-  MoreVertical,
-  User,
+  Menu,
   Bot,
+  User,
+  Send,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
 
-// Mock Fellows Data
-const fellows = [
+type Fellow = {
+  id: string;
+  name: string;
+  nameTr: string;
+  expertise: string;
+  expertiseTr: string;
+  avatar: string;
+  icon: LucideIcon;
+  accent: {
+    iconBg: string;
+    iconBorder: string;
+    iconText: string;
+    badge: string;
+  };
+};
+
+type ConversationPreview = {
+  id: string;
+  title: string;
+  fellowId: string;
+  timestamp: string;
+};
+
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+};
+
+const FELLOWS: Fellow[] = [
   {
     id: 'ai',
     name: 'AI Fellow',
@@ -35,9 +70,13 @@ const fellows = [
     expertise: 'Machine Learning, Deep Learning, Neural Networks',
     expertiseTr: 'Makine Öğrenmesi, Derin Öğrenme, Sinir Ağları',
     avatar: '🤖',
-    color: 'from-blue-500/20 to-purple-500/20',
-    borderColor: 'border-blue-500/30',
     icon: Brain,
+    accent: {
+      iconBg: 'bg-sky-500/10',
+      iconBorder: 'border-sky-500/30',
+      iconText: 'text-sky-600',
+      badge: 'border-sky-500/40 text-sky-600',
+    },
   },
   {
     id: 'math',
@@ -46,9 +85,13 @@ const fellows = [
     expertise: 'Calculus, Linear Algebra, Statistics',
     expertiseTr: 'Kalkülüs, Lineer Cebir, İstatistik',
     avatar: '📐',
-    color: 'from-emerald-500/20 to-teal-500/20',
-    borderColor: 'border-emerald-500/30',
     icon: Calculator,
+    accent: {
+      iconBg: 'bg-emerald-500/10',
+      iconBorder: 'border-emerald-500/30',
+      iconText: 'text-emerald-600',
+      badge: 'border-emerald-500/40 text-emerald-600',
+    },
   },
   {
     id: 'logic',
@@ -57,486 +100,1207 @@ const fellows = [
     expertise: 'Computer Science, Algorithms, Programming',
     expertiseTr: 'Bilgisayar Bilimi, Algoritmalar, Programlama',
     avatar: '💡',
-    color: 'from-amber-500/20 to-orange-500/20',
-    borderColor: 'border-amber-500/30',
     icon: Code,
+    accent: {
+      iconBg: 'bg-amber-500/10',
+      iconBorder: 'border-amber-500/30',
+      iconText: 'text-amber-600',
+      badge: 'border-amber-500/40 text-amber-600',
+    },
   },
 ];
 
-// Mock conversation history
-const mockConversations = [
-  { id: '1', title: 'Introduction to Machine Learning', fellowId: 'ai', timestamp: '2 hours ago' },
-  { id: '2', title: 'Linear Algebra Basics', fellowId: 'math', timestamp: '1 day ago' },
-  { id: '3', title: 'Sorting Algorithms', fellowId: 'logic', timestamp: '3 days ago' },
+const MOCK_CONVERSATIONS: ConversationPreview[] = [
+  { id: '1', title: 'Intro to Machine Learning', fellowId: 'ai', timestamp: '2h ago' },
+  { id: '2', title: 'Linear Algebra Basics', fellowId: 'math', timestamp: '1d ago' },
+  { id: '3', title: 'Sorting Algorithms', fellowId: 'logic', timestamp: '3d ago' },
 ];
 
-// Quick prompts
-const quickPrompts = [
+const QUICK_PROMPTS = [
   { icon: '💡', textEn: 'Explain this concept simply', textTr: 'Bu konsepti basitçe açıkla' },
   { icon: '✏️', textEn: 'Give me practice problems', textTr: 'Bana pratik problemler ver' },
-  { icon: '🔍', textEn: 'Help me debug my code', textTr: 'Kodumu debug etmeme yardım et' },
+  { icon: '🔍', textEn: 'Help me debug my code', textTr: 'Kodumu hata ayıklamada yardımcı ol' },
   { icon: '📚', textEn: 'Recommend learning resources', textTr: 'Öğrenme kaynakları öner' },
+];
+
+const INTRO_STEPS = [
+  {
+    icon: Brain,
+    title: {
+      en: 'Switch between fellows',
+      tr: 'Arkadaşlar arasında geçiş yap',
+    },
+    body: {
+      en: 'Each fellow is tuned for a different learning style. Swap whenever you need a new angle or deeper theory.',
+      tr: 'Her arkadaş farklı bir öğrenme tarzına göre ayarlanmıştır. Yeni bir bakış açısı ya da daha derin teori gerektiğinde geçiş yap.',
+    },
+    chips: {
+      en: ['AI Fellow · Fast recaps', 'Math Fellow · Proof support'],
+      tr: ['AI Arkadaşı · Hızlı özet', 'Matematik Arkadaşı · İspat desteği'],
+    },
+    conversationTitle: {
+      en: 'Watch the fellows collaborate',
+      tr: 'Arkadaşların birlikte çalışmasına bak',
+    },
+    conversation: [
+      {
+        role: 'user',
+        en: 'I have 20 minutes before the exam. Which fellow should I talk to?',
+        tr: 'Sınavdan önce 20 dakikam var. Hangi arkadaşla konuşmalıyım?',
+        delay: 0,
+      },
+      {
+        role: 'assistant',
+        en: 'Start with AI Fellow for a big-picture recap, then pass the conversation to Math Fellow for proofs.',
+        tr: 'Önce genel hatlar için AI Arkadaşıyla başla, sonra ispatlar için Matematik Arkadaşına devret.',
+        delay: 150,
+      },
+      {
+        role: 'user',
+        en: 'Can you hand the thread over to Logic Fellow when I’m ready for code examples?',
+        tr: 'Kod örneklerine hazır olduğumda sohbeti Mantık Arkadaşına devredebilir misin?',
+        delay: 300,
+      },
+      {
+        role: 'assistant-typing',
+        en: '',
+        tr: '',
+        delay: 450,
+      },
+      {
+        role: 'assistant',
+        en: 'Absolutely. I’ll keep the context so Logic Fellow can jump straight into algorithm walk-throughs.',
+        tr: 'Elbette. Bağlamı koruyorum; Mantık Arkadaşı doğrudan algoritma anlatımına geçer.',
+        delay: 900,
+      },
+    ],
+    spotlights: [
+      {
+        accent: 'border-sky-500/40 bg-sky-500/10 text-sky-700',
+        title: {
+          en: 'AI Fellow · Fast recaps',
+          tr: 'AI Arkadaşı · Hızlı özet',
+        },
+        body: {
+          en: 'Turns lectures into concise bullet points and remembers your last session.',
+          tr: 'Dersleri kısa maddelere dönüştürür ve son oturumunu hatırlar.',
+        },
+      },
+      {
+        accent: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+        title: {
+          en: 'Math Fellow · Proof partner',
+          tr: 'Matematik Arkadaşı · İspat ortağı',
+        },
+        body: {
+          en: 'Checks your derivations line by line and suggests alternative approaches.',
+          tr: 'Türetmelerini satır satır kontrol eder ve alternatif yaklaşımlar önerir.',
+        },
+      },
+      {
+        accent: 'border-amber-500/40 bg-amber-500/10 text-amber-700',
+        title: {
+          en: 'Logic Fellow · Code companion',
+          tr: 'Mantık Arkadaşı · Kod yoldaşı',
+        },
+        body: {
+          en: 'Links theory with runnable snippets and debugging tips.',
+          tr: 'Teoriyi çalıştırılabilir kod parçaları ve hata ayıklama ipuçlarıyla birleştirir.',
+        },
+      },
+    ],
+    bullets: {
+      en: [
+        'Open the sidebar to pick the fellow that fits the current hurdle.',
+        'Swap mid-conversation—context is retained so you never repeat yourself.',
+      ],
+      tr: [
+        'Mevcut engeline uyan arkadaşı seçmek için yan paneli aç.',
+        'Sohbet ortasında değiştir—bağlam korunur, kendini tekrar etmezsin.',
+      ],
+    },
+    note: {
+      en: 'Tip: fellows remember which course you came from, so mention the lesson title for sharper help.',
+      tr: 'İpucu: arkadaşlar hangi dersten geldiğini hatırlar, ders adını belirtirsen daha net yardım alırsın.',
+    },
+  },
+  {
+    icon: Sparkles,
+    title: {
+      en: 'Kickstart with quick prompts',
+      tr: 'Hızlı istemlerle başlat',
+    },
+    body: {
+      en: 'Short on time? Tap a prompt to get instant structure and follow-up suggestions.',
+      tr: 'Zamanın kısıtlı mı? Bir isteme dokun ve anında yapı ile takip önerileri al.',
+    },
+    chips: {
+      en: ['Concept checkpoint', 'Debug request'],
+      tr: ['Kavram kontrolü', 'Hata ayıklama isteği'],
+    },
+    conversationTitle: {
+      en: 'Prompts in motion',
+      tr: 'İstemler işbaşında',
+    },
+    conversation: [
+      {
+        role: 'user',
+        en: 'Give me three spaced-repetition questions about eigenvalues.',
+        tr: 'Eigenvalue konusunda üç tekrar eden soru hazırlar mısın?',
+        delay: 0,
+      },
+      {
+        role: 'assistant',
+        en: 'Absolutely! Question 1 (1-day interval): “What does the determinant tell you about eigenvalues?”',
+        tr: 'Elbette! Soru 1 (1 günlük aralık): “Determinant sana eigenvalue hakkında ne söyler?”',
+        delay: 200,
+      },
+      {
+        role: 'assistant',
+        en: 'Question 2 (3-day interval): “How do eigenvectors behave when eigenvalues are repeated?”',
+        tr: 'Soru 2 (3 günlük aralık): “Eigenvalue tekrarlandığında eigenvector nasıl davranır?”',
+        delay: 400,
+      },
+      {
+        role: 'assistant-typing',
+        en: '',
+        tr: '',
+        delay: 550,
+      },
+      {
+        role: 'assistant',
+        en: 'Question 3 (7-day interval): “Connect geometric multiplicity to diagonalisation.” Want hints with answers?',
+        tr: 'Soru 3 (7 günlük aralık): “Geometrik çokluğu diagonalizasyonla ilişkilendir.” İpuçları da ister misin?',
+        delay: 900,
+      },
+      {
+        role: 'user',
+        en: 'Yes please, and add them to my notes.',
+        tr: 'Evet lütfen, notlarıma da ekle.',
+        delay: 1150,
+      },
+      {
+        role: 'assistant',
+        en: 'Done! I also scheduled a reminder so you’ll revisit these questions automatically.',
+        tr: 'Tamamdır! Bu soruları otomatik tekrar etmek için hatırlatıcı da ekledim.',
+        delay: 1350,
+      },
+    ],
+    spotlights: [
+      {
+        accent: 'border-violet-500/40 bg-violet-500/10 text-violet-700',
+        title: {
+          en: 'Concept check prompts',
+          tr: 'Kavram kontrol istemleri',
+        },
+        body: {
+          en: 'Request analogies, bridges to prior knowledge, or “explain like I’m 12” rewrites.',
+          tr: 'Benzerlik, önceki bilgiye köprü veya “12 yaşındaymışım gibi anlat” yeniden yazımları iste.',
+        },
+      },
+      {
+        accent: 'border-sky-500/40 bg-sky-500/10 text-sky-700',
+        title: {
+          en: 'Practice loops',
+          tr: 'Pratik döngüleri',
+        },
+        body: {
+          en: 'Generate spaced repetition drills with reminders and optional hints.',
+          tr: 'Hatırlatıcı ve isteğe bağlı ipuçlarıyla aralıklı tekrar pratikleri oluştur.',
+        },
+      },
+      {
+        accent: 'border-rose-500/40 bg-rose-500/10 text-rose-700',
+        title: {
+          en: 'Debug helpers',
+          tr: 'Hata ayıklama yardımcıları',
+        },
+        body: {
+          en: 'Share code + failing output to get “spot the bug” guided questions.',
+          tr: 'Kodu ve hatalı çıktıyı paylaşarak “hata nerede” sorularıyla yönlendirme al.',
+        },
+      },
+    ],
+    bullets: {
+      en: [
+        'Prompts adapt to your locale—edit text before sending if you prefer.',
+        'Stack multiple prompts in one message to build a personalised study playlist.',
+      ],
+      tr: [
+        'İstemler diline uyum sağlar—göndermeden önce metni düzenleyebilirsin.',
+        'Tek mesajda birden çok istemi birleştirerek kişisel çalışma listesi oluştur.',
+      ],
+    },
+    note: {
+      en: 'Hint: long-press a prompt on mobile to copy it for later or pin it to your notes.',
+      tr: 'İpucu: mobilde bir isteme uzun basarak kopyalayıp notlarına sabitleyebilirsin.',
+    },
+  },
+  {
+    icon: Code,
+    title: {
+      en: 'Stay in flow',
+      tr: 'Akışta kal',
+    },
+    body: {
+      en: 'Move from concept to practice without switching tools—fellows review code, maths, or notes in one place.',
+      tr: 'Araç değiştirmeden kavramdan uygulamaya geç—arkadaşlar kodu, matematiği veya notları tek yerde inceleyebilir.',
+    },
+    chips: {
+      en: ['Live feedback', 'Shared notes'],
+      tr: ['Anlık geri bildirim', 'Paylaşılan notlar'],
+    },
+    conversationTitle: {
+      en: 'From plan to execution',
+      tr: 'Plandan uygulamaya',
+    },
+    conversation: [
+      {
+        role: 'user',
+        en: 'Here’s my quicksort implementation—why is it timing out?',
+        tr: 'İşte quicksort uygulamam—neden zaman aşımına uğruyor?',
+        delay: 0,
+      },
+      {
+        role: 'assistant',
+        en: 'Your pivot always picks the first element. Shall I switch it to a random pivot and annotate the code?',
+        tr: 'Pivot her zaman ilk elemanı seçiyor. Rastgele pivota geçirip kodu açıklamamı ister misin?',
+        delay: 180,
+      },
+      {
+        role: 'user',
+        en: 'Yes, and add a quick note for future me.',
+        tr: 'Evet, ayrıca gelecekteki ben için not ekle.',
+        delay: 360,
+      },
+      {
+        role: 'assistant-typing',
+        en: '',
+        tr: '',
+        delay: 520,
+      },
+      {
+        role: 'assistant',
+        en: 'Patched! I added “randomPivot” plus a reminder to analyse worst-case input. Want Math Fellow to sanity-check complexity?',
+        tr: 'Yamalandı! “randomPivot” ekledim ve en kötü giriş analizi için not bıraktım. Karmaşıklığı kontrol etmesi için Matematik Arkadaşını çağırayım mı?',
+        delay: 900,
+      },
+      {
+        role: 'user',
+        en: 'Please loop them in.',
+        tr: 'Lütfen onu da dahil et.',
+        delay: 1100,
+      },
+      {
+        role: 'assistant',
+        en: 'Done. You now have a shared note with both code and complexity breakdown.',
+        tr: 'Tamam. Kod ve karmaşıklık analizini içeren ortak bir notun var.',
+        delay: 1300,
+      },
+    ],
+    spotlights: [
+      {
+        accent: 'border-amber-500/40 bg-amber-500/10 text-amber-700',
+        title: {
+          en: 'Capture outcomes',
+          tr: 'Çıktıları kaydet',
+        },
+        body: {
+          en: 'Every recommendation can be pushed to your notes for later review.',
+          tr: 'Her öneriyi daha sonra gözden geçirmek için notlarınıza atabilirsiniz.',
+        },
+      },
+      {
+        accent: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+        title: {
+          en: 'Bring others in',
+          tr: 'Başkalarını çağır',
+        },
+        body: {
+          en: 'Loop another fellow mid-thread; context carries over without repeating yourself.',
+          tr: 'Sohbet ortasında başka bir arkadaşı davet et; bağlam korunur, anlattıklarını tekrar etmezsin.',
+        },
+      },
+      {
+        accent: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-700',
+        title: {
+          en: 'See the history',
+          tr: 'Geçmişi gör',
+        },
+        body: {
+          en: 'Scroll back through the shared timeline to understand every adjustment.',
+          tr: 'Yapılan her ayarlamayı görmek için paylaşılan zaman çizelgesinde geri gez.',
+        },
+      },
+    ],
+    bullets: {
+      en: [
+        'Attach context (lesson, repo, or notebook) so fellows respond faster.',
+        'Toggle between fellows mid-thread without losing the conversation.',
+      ],
+      tr: [
+        'Bağlam (ders, repo veya not) ekleyerek arkadaşların daha hızlı yanıt vermesini sağla.',
+        'Konuşmayı kaybetmeden sohbet ortasında arkadaş değiştirebilirsin.',
+      ],
+    },
+    note: {
+      en: 'Remember: everything is saved locally until you clear it, so feel free to experiment.',
+      tr: 'Unutma: her şey temizleyene kadar yerelde saklanır, istediğin kadar deneme yapabilirsin.',
+    },
+  },
 ];
 
 export default function DashboardFellowsPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const locale = params?.locale as string || 'en';
-  
-  const [selectedFellow, setSelectedFellow] = useState('ai');
-  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>>([]);
+  const locale = (params?.locale as string) ?? 'en';
+  const isEnglish = locale === 'en';
+
+  const [selectedFellow, setSelectedFellow] = useState<string>(FELLOWS[0]?.id ?? '');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const [introStep, setIntroStep] = useState(0);
+  const [visibleConversationIndexes, setVisibleConversationIndexes] = useState<number[]>([]);
+  const INTRO_CONVERSATION_SLOWDOWN = 2.4;
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const currentFellow = fellows.find(f => f.id === selectedFellow) || fellows[0];
+  const currentFellow = useMemo(
+    () => FELLOWS.find((fellow) => fellow.id === selectedFellow) ?? FELLOWS[0],
+    [selectedFellow],
+  );
 
-  // Parse context from URL
+  const CurrentFellowIcon = currentFellow.icon;
+
+  const localizedFellowName = isEnglish ? currentFellow.name : currentFellow.nameTr;
+  const localizedExpertise = isEnglish ? currentFellow.expertise : currentFellow.expertiseTr;
+
+  const quickPromptItems = useMemo(
+    () =>
+      QUICK_PROMPTS.map((prompt) => ({
+        key: prompt.textEn,
+        label: isEnglish ? prompt.textEn : prompt.textTr,
+        icon: prompt.icon,
+      })),
+    [isEnglish],
+  );
+
+  const introSlides = useMemo(
+    () =>
+      INTRO_STEPS.flatMap((step, stepIndex) => {
+        const spotlightsCount = step.spotlights?.length ?? 0;
+        const bulletCountEn = step.bullets?.en?.length ?? 0;
+        const bulletCountTr = step.bullets?.tr?.length ?? 0;
+        const hasNote = Boolean(step.note?.en || step.note?.tr);
+        const hasDetails = spotlightsCount > 0 || bulletCountEn > 0 || bulletCountTr > 0 || hasNote;
+
+        const slides = [{ stepIndex, view: 'conversation' } as const];
+        if (hasDetails) {
+          slides.push({ stepIndex, view: 'details' } as const);
+        }
+        return slides;
+      }),
+    [],
+  );
+  const totalIntroSlides = introSlides.length;
+
+  const focusTextarea = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, []);
+
+  const handlePromptClick = useCallback(
+    (promptText: string) => {
+      setInput(promptText);
+      focusTextarea();
+    },
+    [focusTextarea],
+  );
+
+  const scheduleAssistantResponse = useCallback(() => {
+    const responses = [
+      isEnglish
+        ? 'That is a thoughtful question. The key is to link this back to the foundations we covered earlier—shall we walk through it together?'
+        : 'Bu gerçekten güzel bir soru. Bunu daha önce ele aldığımız temellere bağlamak önemli—istersen birlikte adım adım ilerleyelim.',
+      isEnglish
+        ? 'Let’s break it down:\n\n1. Start from the definition\n2. Check how it behaves in practice\n3. Try a quick example to cement it\n\nWould you like more detail on any step?'
+        : 'Bunu parçalayalım:\n\n1. Tanımdan başlayalım\n2. Pratikte nasıl davrandığına bakalım\n3. Küçük bir örnek ile pekiştirelim\n\nHerhangi bir adımı daha detaylı anlatmamı ister misin?',
+      isEnglish
+        ? 'Great! Think of this like stacking blocks—each concept supports the next. I can share an analogy if that helps.'
+        : 'Harika! Bunu üst üste dizilen bloklar gibi düşün—her konsept bir sonrakini destekler. İşe yararsa benzetme de paylaşabilirim.',
+    ];
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      const aiMessage: ChatMessage = {
+        role: 'assistant',
+        content: responses[Math.floor(Math.random() * responses.length)],
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+      setIsTyping(false);
+      typingTimeoutRef.current = null;
+    }, 1100);
+  }, [isEnglish]);
+
+  const dispatchUserMessage = useCallback(
+    (rawText: string) => {
+      const text = rawText.trim();
+      if (!text) return;
+
+      const userMessage: ChatMessage = {
+        role: 'user',
+        content: text,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMessage]);
+      setIsTyping(true);
+      scheduleAssistantResponse();
+    },
+    [scheduleAssistantResponse],
+  );
+
+  const handleSendMessage = useCallback(
+    (messageText?: string) => {
+      const text = (messageText ?? input).trim();
+      if (!text || isTyping) return;
+      setInput('');
+      dispatchUserMessage(text);
+    },
+    [dispatchUserMessage, input, isTyping],
+  );
+
+  const handleKeyPress = useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        handleSendMessage();
+      }
+    },
+    [handleSendMessage],
+  );
+
+  const handleSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      handleSendMessage();
+    },
+    [handleSendMessage],
+  );
+
+  const handleNewChat = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    setMessages([]);
+    setIsTyping(false);
+    setInput('');
+    setShowSidebar(false);
+    focusTextarea();
+  }, [focusTextarea]);
+
+  const handleSelectFellow = useCallback((fellowId: string) => {
+    setSelectedFellow(fellowId);
+    setShowSidebar(false);
+  }, []);
+
+  const handleIntroClose = useCallback(() => {
+    setShowIntro(false);
+    setIntroStep(0);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('fellowsIntroSeen', 'true');
+    }
+  }, []);
+
+  const handleIntroBack = useCallback(() => {
+    setIntroStep((prev) => Math.max(prev - 1, 0));
+  }, []);
+
+  const handleIntroNext = useCallback(() => {
+    setIntroStep((prev) => {
+      const next = prev + 1;
+      if (totalIntroSlides === 0 || next >= totalIntroSlides) {
+        handleIntroClose();
+        return prev;
+      }
+      return next;
+    });
+  }, [handleIntroClose, totalIntroSlides]);
+
   useEffect(() => {
     const context = searchParams?.get('context');
-    if (context) {
-      // Parse: course:slug:lesson:id
-      const parts = context.split(':');
-      if (parts.length >= 4) {
-        const initialMessage = locale === 'en' 
-          ? `I'm currently studying "${parts[1]}" and need help with lesson "${parts[3]}". Can you help me?`
-          : `Şu an "${parts[1]}" kursunu çalışıyorum ve "${parts[3]}" dersi ile ilgili yardıma ihtiyacım var. Yardımcı olabilir misiniz?`;
-        handleSendMessage(initialMessage);
-      }
-    }
-  }, [searchParams]);
+    if (!context) return;
 
-  // Auto-scroll to bottom
+    const parts = context.split(':');
+    if (parts.length >= 4) {
+      const initialMessage = isEnglish
+        ? `I'm studying "${parts[1]}" and need help with lesson "${parts[3]}". Can you clarify it for me?`
+        : `Şu an "${parts[1]}" üzerine çalışıyorum ve "${parts[3]}" dersi için yardıma ihtiyacım var. Açıklayabilir misin?`;
+      dispatchUserMessage(initialMessage);
+    }
+  }, [dispatchUserMessage, isEnglish, searchParams]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   }, [input]);
 
-  const handleSendMessage = async (messageText?: string) => {
-    const text = messageText || input.trim();
-    if (!text) return;
-
-    // Add user message
-    const userMessage = {
-      role: 'user' as const,
-      content: text,
-      timestamp: new Date(),
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
     };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsTyping(true);
+  }, []);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses = [
-        "That's a great question! Let me help you understand this concept better. " +
-        (locale === 'en' 
-          ? "The key thing to remember is that this builds on fundamental principles we've discussed."
-          : "Hatırlanması gereken önemli nokta, bunun daha önce tartıştığımız temel prensiplere dayandığıdır."),
-        
-        "I can see why this might be confusing. Let me break it down step by step:\n\n" +
-        "1. First, consider the basic definition\n" +
-        "2. Then, look at how it applies in practice\n" +
-        "3. Finally, try solving a simple example\n\n" +
-        (locale === 'en' ? "Would you like me to elaborate on any of these steps?" : "Bu adımlardan herhangi birini detaylandırmamı ister misiniz?"),
-        
-        "Excellent! Here's a practical approach:\n\n" +
-        (locale === 'en' 
-          ? "Think of it like building blocks - each concept stacks on the previous one. Let me give you a real-world analogy that might help..."
-          : "Bunu yapı taşları gibi düşünün - her konsept bir öncekinin üzerine yığılır. Size yardımcı olabilecek gerçek dünya benzetmesi vereyim..."),
-      ];
-
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-      
-      const aiMessage = {
-        role: 'assistant' as const,
-        content: randomResponse,
-        timestamp: new Date(),
-      };
-      
-      setMessages(prev => [...prev, aiMessage]);
-      setIsTyping(false);
-    }, 1500);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const introSeen = window.localStorage.getItem('fellowsIntroSeen');
+    const forceTour = searchParams?.get('tour') === 'on';
+    if (forceTour) {
+      window.localStorage.removeItem('fellowsIntroSeen');
+      setShowIntro(true);
+      return;
     }
-  };
+    if (!introSeen) {
+      setShowIntro(true);
+    }
+  }, [searchParams]);
 
-  const handleNewChat = () => {
-    setMessages([]);
-  };
+  useEffect(() => {
+    if (!showIntro) {
+      setVisibleConversationIndexes([]);
+      return;
+    }
+
+    const currentSlide = introSlides[introStep];
+    if (!currentSlide || currentSlide.view !== 'conversation') {
+      setVisibleConversationIndexes([]);
+      return;
+    }
+
+    const step = INTRO_STEPS[currentSlide.stepIndex];
+    if (!step || !step.conversation || step.conversation.length === 0) {
+      setVisibleConversationIndexes([]);
+      return;
+    }
+
+    const conversation = step.conversation;
+    const timeouts: Array<ReturnType<typeof setTimeout>> = [];
+    setVisibleConversationIndexes([]);
+
+    conversation.forEach((message, idx) => {
+      const baseDelay = message.delay ?? idx * 200;
+      const delay = Math.max(0, baseDelay) * INTRO_CONVERSATION_SLOWDOWN;
+      timeouts.push(
+        setTimeout(() => {
+          setVisibleConversationIndexes((prev) => {
+            if (prev.includes(idx)) {
+              return prev;
+            }
+            return [...prev, idx].sort((a, b) => a - b);
+          });
+        }, delay),
+      );
+    });
+
+    return () => {
+      timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+    };
+  }, [showIntro, introStep, introSlides]);
+
+  const fellowListCard = (
+    <Card className="border-border/60 bg-card/80 shadow-sm">
+      <CardHeader className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base font-semibold text-foreground">
+            {isEnglish ? 'AI Fellows' : 'AI Arkadaşlar'}
+          </CardTitle>
+          <Button variant="outline" size="sm" onClick={handleNewChat} className="h-8 gap-2">
+            <Sparkles className="h-3.5 w-3.5" />
+            {isEnglish ? 'New chat' : 'Yeni sohbet'}
+          </Button>
+        </div>
+        <CardDescription>
+          {isEnglish
+            ? 'Pick a fellow to guide you through questions, explanations, and practice.'
+            : 'Sorular, açıklamalar ve pratikte size eşlik etmesi için bir arkadaş seçin.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {FELLOWS.map((fellow) => {
+          const FellowIcon = fellow.icon;
+          const isActive = fellow.id === selectedFellow;
+          const fellowName = isEnglish ? fellow.name : fellow.nameTr;
+          const fellowExpertise = isEnglish ? fellow.expertise : fellow.expertiseTr;
+
+          return (
+            <button
+              key={fellow.id}
+              type="button"
+              onClick={() => handleSelectFellow(fellow.id)}
+              className={`w-full rounded-xl border px-3.5 py-3 text-left transition-all ${
+                isActive
+                  ? 'border-primary/40 bg-primary/10 text-foreground shadow-sm'
+                  : 'border-border/60 bg-card hover:border-primary/30 hover:bg-card/80'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border ${fellow.accent.iconBorder} ${fellow.accent.iconBg} ${
+                    isActive ? fellow.accent.iconText : 'text-muted-foreground'
+                  }`}
+                >
+                  <FellowIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold">{fellowName}</p>
+                    {isActive && (
+                      <Badge variant="secondary" className={`${fellow.accent.badge} bg-transparent px-1.5 py-0 text-[11px]`}>
+                        {isEnglish ? 'Active' : 'Aktif'}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{fellowExpertise}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+
+  const recentConversationsCard = (
+    <Card className="border-border/60 bg-card/80 shadow-sm">
+      <CardHeader className="space-y-1.5">
+        <CardTitle className="text-base font-semibold text-foreground">
+          {isEnglish ? 'Recent conversations' : 'Son sohbetler'}
+        </CardTitle>
+        <CardDescription>
+          {isEnglish
+            ? 'Jump back into a discussion you started earlier.'
+            : 'Önceden başlattığın bir konuşmaya geri dön.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {MOCK_CONVERSATIONS.map((conversation) => {
+          const fellow = FELLOWS.find((item) => item.id === conversation.fellowId);
+          return (
+            <button
+              key={conversation.id}
+              type="button"
+              className="w-full rounded-lg border border-border/60 bg-card px-3.5 py-3 text-left transition-all hover:border-primary/30 hover:bg-card/80"
+            >
+              <div className="flex items-start gap-3">
+                <div className="text-xl">{fellow?.avatar ?? '💬'}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{conversation.title}</p>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                    {fellow && (
+                      <span className={`font-medium ${fellow.accent.iconText}`}>
+                        {isEnglish ? fellow.name : fellow.nameTr}
+                      </span>
+                    )}
+                    <span>•</span>
+                    <span>{conversation.timestamp}</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+
+  const quickPromptsCard = (
+    <Card className="border-border/60 bg-card/80 shadow-sm">
+      <CardHeader className="space-y-1.5">
+        <CardTitle className="text-base font-semibold text-foreground">
+          {isEnglish ? 'Quick prompts' : 'Hızlı istemler'}
+        </CardTitle>
+        <CardDescription>
+          {isEnglish
+            ? 'Use a ready-made prompt to get started quickly.'
+            : 'Hızlı başlamak için hazır bir istem kullan.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-2">
+          {quickPromptItems.map((prompt) => (
+            <button
+              key={prompt.key}
+              type="button"
+              onClick={() => handlePromptClick(prompt.label)}
+              className="group flex items-center gap-3 rounded-lg border border-border/60 bg-card px-3.5 py-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-card/80"
+            >
+              <span className="text-lg">{prompt.icon}</span>
+              <span className="text-muted-foreground group-hover:text-primary transition-colors">
+                {prompt.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const guideSection = (
+    <div />
+  );
+
+  const sidebarContent = (
+    <div className="flex flex-col gap-6">
+      {fellowListCard}
+      {recentConversationsCard}
+      {quickPromptsCard}
+    </div>
+  );
+
+  const effectiveIntroStep = totalIntroSlides > 0 ? Math.min(introStep, totalIntroSlides - 1) : 0;
+  const currentIntroSlide = totalIntroSlides > 0 ? introSlides[effectiveIntroStep] : null;
+  const currentIntroStepIndex = currentIntroSlide?.stepIndex ?? 0;
+  const currentIntroStep = INTRO_STEPS[currentIntroStepIndex];
+  const isConversationSlide = currentIntroSlide?.view === 'conversation';
+  const stepIcon = currentIntroStep.icon;
+  const stepTitle = isEnglish ? currentIntroStep.title.en : currentIntroStep.title.tr;
+  const stepBody = isEnglish ? currentIntroStep.body.en : currentIntroStep.body.tr;
+  const stepChips = isEnglish ? currentIntroStep.chips.en : currentIntroStep.chips.tr;
+  const conversationTitle = isEnglish
+    ? currentIntroStep.conversationTitle.en
+    : currentIntroStep.conversationTitle.tr;
+  const stepConversation = isConversationSlide ? currentIntroStep.conversation : [];
+  const spotlights = currentIntroStep.spotlights ?? [];
+  const bullets = isEnglish ? currentIntroStep.bullets.en : currentIntroStep.bullets.tr;
+  const note = isEnglish ? currentIntroStep.note.en : currentIntroStep.note.tr;
+  const detailsHighlightsTitle = isEnglish ? 'Highlights' : 'Öne çıkanlar';
+  const detailsTakeawaysTitle = isEnglish ? 'Keep in mind' : 'Aklında kalsın';
+  const detailsNoteLabel = isEnglish ? 'Note' : 'Not';
+  const progress =
+    totalIntroSlides > 0 ? Math.round(((effectiveIntroStep + 1) / totalIntroSlides) * 100) : 100;
+  const displaySlideCount = Math.max(totalIntroSlides, 1);
+  const displaySlidePosition = Math.min(effectiveIntroStep + 1, displaySlideCount);
+  const visibleConversationSet = useMemo(
+    () => (isConversationSlide ? new Set<number>(visibleConversationIndexes) : new Set<number>()),
+    [isConversationSlide, visibleConversationIndexes],
+  );
 
   return (
-    <div className="h-[calc(100vh-4rem)] lg:h-screen bg-background relative overflow-hidden">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 bg-grid-white/[0.02] pointer-events-none opacity-40" />
-
-      <div className="relative h-full max-w-[1800px] mx-auto">
-        <div className="grid lg:grid-cols-[320px_1fr] h-full gap-0">
-          {/* Mobile Overlay */}
-          {showSidebar && (
-            <div 
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-              onClick={() => setShowSidebar(false)}
-            />
-          )}
-
-          {/* Sidebar */}
-          <div className={`
-            fixed lg:relative inset-y-0 left-0 z-50 lg:z-0
-            w-[280px] lg:w-auto
-            transform transition-transform duration-300 ease-in-out
-            ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-            border-r border-border/50 bg-card/95 lg:bg-card/50 backdrop-blur-xl
-            flex flex-col h-full overflow-hidden
-          `}>
-            {/* Sidebar Header */}
-            <div className="p-4 border-b border-border/50">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  {locale === 'en' ? 'AI Fellows' : 'AI Arkadaşlar'}
-                </h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleNewChat}
-                  className="h-8 w-8 p-0"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <Button
-                onClick={handleNewChat}
-                className="w-full"
-                size="sm"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                {locale === 'en' ? 'New Conversation' : 'Yeni Sohbet'}
-              </Button>
-            </div>
-
-            {/* Fellows List */}
-            <div className="p-4 space-y-3 border-b border-border/50">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                {locale === 'en' ? 'Choose Fellow' : 'Fellow Seç'}
-              </p>
-              {fellows.map(fellow => {
-                const FellowIcon = fellow.icon;
-                return (
-                  <button
-                    key={fellow.id}
-                    onClick={() => {
-                      setSelectedFellow(fellow.id);
-                      setShowSidebar(false);
-                    }}
-                    className={`group relative w-full text-left p-4 rounded-xl transition-all overflow-hidden ${
-                      selectedFellow === fellow.id
-                        ? `bg-gradient-to-br ${fellow.color} border-2 ${fellow.borderColor} shadow-lg`
-                        : 'bg-background/50 border border-border/50 hover:bg-background/80 hover:border-border hover:shadow-md'
-                    }`}
-                  >
-                    {/* Glow effect on active */}
-                    {selectedFellow === fellow.id && (
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-                    )}
-                    
-                    <div className="relative flex items-start gap-3">
-                      <div className={`flex-shrink-0 h-10 w-10 rounded-lg flex items-center justify-center transition-all ${
-                        selectedFellow === fellow.id 
-                          ? `bg-gradient-to-br ${fellow.color} ring-2 ring-offset-2 ring-offset-background ${fellow.borderColor.replace('border-', 'ring-')}`
-                          : 'bg-background/80 group-hover:bg-background'
-                      }`}>
-                        <FellowIcon className={`h-5 w-5 ${selectedFellow === fellow.id ? 'text-primary' : 'text-muted-foreground'}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className={`font-semibold text-sm truncate ${
-                            selectedFellow === fellow.id ? 'text-primary' : 'text-foreground'
-                          }`}>
-                            {locale === 'en' ? fellow.name : fellow.nameTr}
-                          </p>
-                          {selectedFellow === fellow.id && (
-                            <Badge variant="default" className="text-[9px] px-1.5 py-0 ml-2 flex-shrink-0">
-                              {locale === 'en' ? 'Active' : 'Aktif'}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 leading-tight">
-                          {locale === 'en' ? fellow.expertise : fellow.expertiseTr}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Recent Conversations */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                {locale === 'en' ? 'Recent' : 'Son Sohbetler'}
-              </p>
-              <div className="space-y-2">
-                {mockConversations.map(conv => {
-                  const convFellow = fellows.find(f => f.id === conv.fellowId);
-                  return (
-                    <button
-                      key={conv.id}
-                      className="w-full text-left p-3 rounded-lg bg-background/50 border border-border/50 hover:bg-background/80 hover:border-border hover:shadow-sm transition-all group"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 text-lg">
-                          {convFellow?.avatar}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                            {conv.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{conv.timestamp}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle delete
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Sidebar Footer */}
-            <div className="p-4 border-t border-border/50">
-              <Button variant="outline" asChild className="w-full" size="sm">
-                <Link href="/fellows">
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  {locale === 'en' ? 'About Fellows' : 'Fellows Hakkında'}
-                </Link>
-              </Button>
-            </div>
-          </div>
-
-          {/* Main Chat Area */}
-          <div className="flex flex-col h-full bg-background">
-            {/* Chat Header */}
-            <div className="border-b border-border/50 bg-card/50 backdrop-blur-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowSidebar(true)}
-                    className="lg:hidden h-9 w-9 p-0"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <div className="flex items-center gap-3">
-                    <div className={`relative h-12 w-12 rounded-xl bg-gradient-to-br ${currentFellow.color} border ${currentFellow.borderColor} flex items-center justify-center shadow-md`}>
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-xl" />
-                      {React.createElement(currentFellow.icon, {
-                        className: 'h-6 w-6 text-primary relative z-10',
-                      })}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground text-base">
-                        {locale === 'en' ? currentFellow.name : currentFellow.nameTr}
-                      </h3>
-                      <p className="text-xs text-muted-foreground line-clamp-1">
-                        {locale === 'en' ? currentFellow.expertise : currentFellow.expertiseTr}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="gap-1.5 hidden sm:flex border-primary/30 bg-primary/5">
-                    <Zap className="h-3 w-3 text-primary animate-pulse" />
-                    <span className="text-xs">{locale === 'en' ? 'Online' : 'Çevrimiçi'}</span>
-                  </Badge>
-                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0 hover:bg-background/80">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-              {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center px-4">
-                  <div className="mb-8 space-y-6">
-                    {/* Fellow Avatar with Glow */}
-                    <div className="relative inline-block">
-                      <div className={`absolute inset-0 bg-gradient-to-br ${currentFellow.color} blur-2xl opacity-50 animate-pulse`} />
-                      <div className="relative">
-                        <div className={`inline-flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br ${currentFellow.color} border-2 ${currentFellow.borderColor} shadow-xl`}>
-                          {React.createElement(currentFellow.icon, {
-                            className: 'h-12 w-12 text-primary',
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Welcome Message */}
-                    <div className="space-y-3">
-                      <h3 className="text-2xl sm:text-3xl font-bold">
-                        {locale === 'en' 
-                          ? `Hi! I'm ${currentFellow.name}`
-                          : `Merhaba! Ben ${currentFellow.nameTr}`}
-                      </h3>
-                      <p className="text-muted-foreground max-w-md mx-auto text-sm sm:text-base leading-relaxed">
-                        {locale === 'en'
-                          ? 'I\'m here to help you with your learning journey. Ask me anything about your courses, concepts, or get practice problems.'
-                          : 'Öğrenme yolculuğunuzda size yardımcı olmak için buradayım. Kurslarınız, konseptler hakkında bana herhangi bir şey sorun veya pratik problemler alın.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Quick Prompts */}
-                  <div className="grid sm:grid-cols-2 gap-3 w-full max-w-2xl">
-                    {quickPrompts.map((prompt, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setInput(locale === 'en' ? prompt.textEn : prompt.textTr)}
-                        className="group relative p-4 rounded-xl bg-card/50 border border-border/50 hover:border-primary/30 hover:bg-card/80 transition-all text-left overflow-hidden shadow-sm hover:shadow-md"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                        <div className="relative flex items-start gap-3">
-                          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                            {prompt.icon}
-                          </div>
-                          <p className="text-sm text-foreground group-hover:text-primary transition-colors leading-relaxed">
-                            {locale === 'en' ? prompt.textEn : prompt.textTr}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {messages.map((message, idx) => (
+    <>
+      {showIntro && currentIntroStep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm px-4 py-6 sm:px-6 sm:py-10">
+          <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-border/60 bg-card/95 shadow-2xl sm:w-[92%] lg:max-w-4xl max-h-[calc(100vh-3rem)]">
+            <div className="relative">
+              <div className="absolute -top-24 -left-10 h-56 w-56 rounded-full bg-primary/20 blur-3xl animate-pulse" />
+              <div className="absolute bottom-[-40px] right-[-30px] h-60 w-60 rounded-full bg-secondary/20 blur-3xl animate-pulse" />
+              <div className="relative flex max-h-[calc(100vh-4.5rem)] flex-col gap-8 overflow-y-auto p-6 sm:gap-10 sm:p-8 md:p-10">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="flex items-start gap-4">
                     <div
-                      key={idx}
-                      className={`flex gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300 ${
-                        message.role === 'user' ? 'justify-end' : 'justify-start'
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
+                        currentIntroStep.icon === Brain
+                          ? 'border-sky-500/40 bg-sky-500/10 text-sky-600'
+                          : currentIntroStep.icon === Sparkles
+                          ? 'border-violet-500/40 bg-violet-500/10 text-violet-600'
+                          : 'border-amber-500/40 bg-amber-500/10 text-amber-600'
                       }`}
                     >
-                      {message.role === 'assistant' && (
-                        <div className="flex-shrink-0">
-                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border-2 border-primary/30 shadow-sm">
-                            <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                          </div>
-                        </div>
-                      )}
-                      <div className={`flex flex-col gap-1.5 max-w-[85%] sm:max-w-[70%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        <div
-                          className={`group relative p-3 sm:p-4 rounded-2xl shadow-sm transition-all hover:shadow-md ${
-                            message.role === 'user'
-                              ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground'
-                              : 'bg-card/90 backdrop-blur-sm border border-border/50 hover:border-border'
-                          }`}
-                        >
-                          {message.role === 'user' && (
-                            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                          )}
-                          <p className="text-sm sm:text-base whitespace-pre-wrap leading-relaxed relative">
-                            {message.content}
-                          </p>
-                        </div>
-                        <p className="text-xs text-muted-foreground px-2">
-                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                      {message.role === 'user' && (
-                        <div className="flex-shrink-0">
-                          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border-2 border-primary/30 shadow-sm">
-                            <User className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                          </div>
-                        </div>
-                      )}
+                      {React.createElement(stepIcon, { className: 'h-6 w-6' })}
                     </div>
-                  ))}
-                  {isTyping && (
-                    <div className="flex gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <div className="flex-shrink-0">
-                        <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center border-2 border-primary/30 shadow-sm">
-                          <Bot className="h-4 w-4 sm:h-5 sm:w-5 text-primary animate-pulse" />
-                        </div>
-                      </div>
-                      <div className="p-4 rounded-2xl bg-card/90 backdrop-blur-sm border border-border/50 shadow-sm">
-                        <div className="flex gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </div>
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+                        {isEnglish ? 'Fellow onboarding' : 'Arkadaş tanıtımı'}
+                      </p>
+                      <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                        {stepTitle}
+                      </h2>
+                      <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
+                        {stepBody}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {stepChips.map((chip) => (
+                          <span
+                            key={chip}
+                            className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                          >
+                            {chip}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </>
-              )}
-            </div>
-
-            {/* Input Area */}
-            <div className="border-t border-border/50 bg-card/50 backdrop-blur-xl p-4">
-              <div className="max-w-4xl mx-auto space-y-3">
-                <div className="flex gap-2 sm:gap-3">
-                  <div className="flex-1 relative">
-                    <Textarea
-                      ref={textareaRef}
-                      placeholder={locale === 'en' ? 'Ask anything...' : 'Herhangi bir şey sor...'}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      className="min-h-[56px] max-h-[200px] resize-none pr-14 text-sm sm:text-base rounded-xl border-border/50 focus:border-primary/30 bg-background/80 backdrop-blur-sm shadow-sm"
-                      rows={1}
-                    />
-                    <Button
-                      onClick={() => handleSendMessage()}
-                      disabled={!input.trim() || isTyping}
-                      size="sm"
-                      className="absolute right-2 bottom-2 h-9 w-9 p-0 rounded-lg shadow-md disabled:opacity-50"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
                   </div>
+                  <Button variant="ghost" size="icon" onClick={handleIntroClose}>
+                    <X className="h-5 w-5" />
+                  </Button>
                 </div>
-                <div className="flex items-center justify-center gap-2">
-                  <div className="h-1 w-1 rounded-full bg-muted-foreground/30" />
-                  <p className="text-xs text-muted-foreground">
-                    {locale === 'en'
-                      ? 'AI Fellows can make mistakes. Consider checking important information.'
-                      : 'AI Fellows hata yapabilir. Önemli bilgileri kontrol etmeyi düşünün.'}
-                  </p>
-                  <div className="h-1 w-1 rounded-full bg-muted-foreground/30" />
+
+                <div className="grid gap-6">
+                  {isConversationSlide ? (
+                    <div className="space-y-4 rounded-2xl border border-border/60 bg-card/70 p-6">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+                        {conversationTitle}
+                      </h3>
+                      <div className="space-y-3">
+                        {stepConversation.map((message, idx) => {
+                          if (!visibleConversationSet.has(idx)) {
+                            return null;
+                          }
+                          if (message.role === 'assistant-typing' && visibleConversationSet.has(idx + 1)) {
+                            return null;
+                          }
+                          const text = isEnglish ? message.en : message.tr;
+                          const isAssistant = message.role.startsWith('assistant');
+                          const isTyping = message.role === 'assistant-typing';
+                          return (
+                            <div
+                              key={`${effectiveIntroStep}-${message.role}-${idx}`}
+                              className="flex items-start gap-3 animate-in fade-in slide-in-from-bottom-3"
+                            >
+                              <div
+                                className={`mt-1 h-6 w-6 rounded-full border ${
+                                  isAssistant ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border/50 bg-card text-muted-foreground'
+                                } flex items-center justify-center text-[10px] uppercase`}
+                              >
+                                {isAssistant ? 'AI' : 'You'}
+                              </div>
+                              <div
+                                className={`max-w-[90%] rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-sm transition-all duration-300 ${
+                                  isAssistant
+                                    ? 'border-primary/40 bg-primary/10 text-foreground'
+                                    : 'border-border/50 bg-card/80 text-foreground'
+                                }`}
+                              >
+                                {isTyping ? (
+                                  <div className="flex items-center gap-1 text-primary/80">
+                                    <span className="h-2 w-2 animate-bounce rounded-full bg-primary" />
+                                    <span className="h-2 w-2 animate-bounce rounded-full bg-primary" style={{ animationDelay: '120ms' }} />
+                                    <span className="h-2 w-2 animate-bounce rounded-full bg-primary" style={{ animationDelay: '240ms' }} />
+                                  </div>
+                                ) : (
+                                  <p>{text}</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {spotlights.length > 0 && (
+                        <div className="space-y-4 rounded-2xl border border-border/60 bg-card/70 p-6">
+                          <h3 className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+                            {detailsHighlightsTitle}
+                          </h3>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {spotlights.map((spotlight) => {
+                              const title = isEnglish ? spotlight.title.en : spotlight.title.tr;
+                              const body = isEnglish ? spotlight.body.en : spotlight.body.tr;
+                              return (
+                                <div
+                                  key={title}
+                                  className={`rounded-2xl border px-4 py-4 text-sm shadow-sm ${spotlight.accent}`}
+                                >
+                                  <p className="font-semibold">{title}</p>
+                                  <p className="mt-1 text-xs sm:text-sm">{body}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      <div className="space-y-4 rounded-2xl border border-border/60 bg-card/70 p-6">
+                        <h3 className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+                          {detailsTakeawaysTitle}
+                        </h3>
+                        <div className="space-y-2">
+                          {bullets.map((bullet) => (
+                            <div key={bullet} className="flex items-start gap-3">
+                              <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-primary" />
+                              <p className="text-sm text-muted-foreground">{bullet}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-3 text-sm text-primary">
+                          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-primary/80">
+                            {detailsNoteLabel}
+                          </span>
+                          <p className="mt-2 text-sm text-primary">{note}</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>
+                        {displaySlidePosition}/{displaySlideCount}
+                      </span>
+                      <span>{progress}%</span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-border">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <Button variant="ghost" onClick={handleIntroClose}>
+                      {isEnglish ? 'Skip tour' : 'Tanıtımı atla'}
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      {introStep > 0 && (
+                        <Button variant="outline" onClick={handleIntroBack}>
+                          {isEnglish ? 'Back' : 'Geri'}
+                        </Button>
+                      )}
+                      <Button onClick={handleIntroNext}>
+                        {totalIntroSlides > 0 && effectiveIntroStep === totalIntroSlides - 1
+                          ? isEnglish
+                            ? 'Get started'
+                            : 'Başla'
+                          : isEnglish
+                            ? 'Next step'
+                            : 'Sonraki adım'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {showSidebar && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowSidebar(false)}
+          />
+          <div className="relative ml-auto flex h-full w-[85%] max-w-sm flex-col gap-6 border-l border-border/60 bg-background px-5 py-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">
+                {isEnglish ? 'AI Fellows' : 'AI Arkadaşlar'}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={isEnglish ? 'Close panel' : 'Paneli kapat'}
+                onClick={() => setShowSidebar(false)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto pb-4">{sidebarContent}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex h-[100svh] flex-col overflow-hidden bg-muted/10 lg:h-screen lg:flex-row">
+        <aside className="hidden h-screen w-[320px] shrink-0 flex-col gap-6 overflow-y-auto border-r border-border/60 bg-card/50 px-4 py-6 backdrop-blur-sm lg:flex">
+          {sidebarContent}
+        </aside>
+
+        <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
+          <div className="hidden sm:flex items-center justify-between gap-6 border-b border-border/60 bg-background/80 px-6 py-4">
+            <div className="flex items-center gap-4">
+              <div
+                className={`flex h-12 w-12 items-center justify-center rounded-xl border ${currentFellow.accent.iconBorder} ${currentFellow.accent.iconBg} ${currentFellow.accent.iconText}`}
+              >
+                <CurrentFellowIcon className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-foreground">{localizedFellowName}</p>
+                <p className="text-sm text-muted-foreground">{localizedExpertise}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="flex items-center gap-1 border-primary/30 text-xs text-primary">
+                <Zap className="h-3 w-3" />
+                {isEnglish ? 'Online now' : 'Şu anda çevrimiçi'}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={handleNewChat}>
+                {isEnglish ? 'Start new chat' : 'Yeni sohbet başlat'}
+              </Button>
+            </div>
+          </div>
+          <div className="sm:hidden flex items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-4 py-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSidebar(true)}
+              aria-label={isEnglish ? 'Open fellows list' : 'Arkadaş listesini aç'}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <Badge variant="outline" className="flex items-center gap-1 border-primary/30 text-xs text-primary">
+              <Zap className="h-3 w-3" />
+              {isEnglish ? 'Online' : 'Çevrimiçi'}
+            </Badge>
+          </div>
+
+          <div className="flex flex-1 min-h-0 flex-col">
+            <div className="flex flex-1 min-h-0 flex-col">
+              <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+                {messages.length === 0 && !showIntro ? (
+                  <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-6 text-center">
+                    <div
+                      className={`flex h-20 w-20 items-center justify-center rounded-2xl border ${currentFellow.accent.iconBorder} ${currentFellow.accent.iconBg} ${currentFellow.accent.iconText}`}
+                    >
+                      <CurrentFellowIcon className="h-8 w-8" />
+                    </div>
+                    <div className="space-y-3">
+                      <h2 className="text-2xl font-semibold text-foreground sm:text-3xl">
+                        {isEnglish
+                          ? `Ready when you are, ${currentFellow.name.split(' ')[0]}`
+                          : `${currentFellow.nameTr.split(' ')[0]} hazır, sen hazırsan`}
+                      </h2>
+                      <p className="text-sm text-muted-foreground sm:text-base">
+                        {isEnglish
+                          ? 'Not sure where to start? Use one of the quick prompts or ask anything that is blocking you.'
+                          : 'Nereden başlayacağını bilmiyor musun? Hızlı istemlerden birini kullan veya seni durduran soruyu yaz.'}
+                      </p>
+                    </div>
+                    <div className="w-full space-y-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {isEnglish ? 'Quick prompts' : 'Hızlı istemler'}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {quickPromptItems.map((prompt) => (
+                          <button
+                            key={prompt.key}
+                            type="button"
+                            onClick={() => handlePromptClick(prompt.label)}
+                            className="group flex items-center gap-3 rounded-lg border border-border/60 bg-card px-3.5 py-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-card/80"
+                          >
+                            <span className="text-lg">{prompt.icon}</span>
+                            <span className="text-muted-foreground group-hover:text-primary transition-colors">
+                              {prompt.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {messages.map((message, idx) => {
+                      const isUser = message.role === 'user';
+                      const formattedTime = message.timestamp.toLocaleTimeString(isEnglish ? 'en-US' : 'tr-TR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+
+                      return (
+                        <div
+                          key={`${message.role}-${message.timestamp.getTime()}-${idx}`}
+                          className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+                        >
+                          {!isUser && (
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary">
+                              <Bot className="h-4 w-4" />
+                            </div>
+                          )}
+                          <div className={`max-w-[80%] sm:max-w-[70%] ${isUser ? 'text-right' : 'text-left'}`}>
+                            <div
+                              className={`rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-sm sm:px-5 sm:py-4 sm:text-base ${
+                                isUser
+                                  ? 'border-primary/40 bg-primary text-primary-foreground'
+                                  : 'border-border/60 bg-card'
+                              }`}
+                            >
+                              <p className="whitespace-pre-wrap">{message.content}</p>
+                            </div>
+                            <p className={`mt-1 text-xs text-muted-foreground ${isUser ? 'pr-1' : 'pl-1'}`}>
+                              {formattedTime}
+                            </p>
+                          </div>
+                          {isUser && (
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary">
+                              <User className="h-4 w-4" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {isTyping && (
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary">
+                          <Bot className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground">
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-primary" />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-primary" style={{ animationDelay: '120ms' }} />
+                          <span className="h-2 w-2 animate-bounce rounded-full bg-primary" style={{ animationDelay: '240ms' }} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border/60 bg-background/70 px-6 py-4">
+                <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <Textarea
+                      ref={textareaRef}
+                      placeholder={isEnglish ? 'Ask anything…' : 'Her şeyi sorabilirsiniz…'}
+                      value={input}
+                      onChange={(event) => setInput(event.target.value)}
+                      onKeyDown={handleKeyPress}
+                      className="min-h-[80px] w-full resize-none rounded-xl border-border/60 bg-background/60 text-sm shadow-sm focus:border-primary/40 focus:shadow-none focus-visible:ring-0 sm:text-base"
+                      rows={2}
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={!input.trim() || isTyping}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 text-primary-foreground shadow-md transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
+                  >
+                    <Send className="h-4 w-4" />
+                    {isEnglish ? 'Send' : 'Gönder'}
+                  </Button>
+                </form>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {isEnglish
+                    ? 'AI Fellows may sometimes be inaccurate. Double-check important answers.'
+                    : 'AI Arkadaşlar zaman zaman yanılabilir. Önemli yanıtları doğrulamayı unutmayın.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
-    </div>
+    </>
   );
 }
-
