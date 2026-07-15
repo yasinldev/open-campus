@@ -25,8 +25,10 @@ export function useEnrollment(courseId?: string) {
   // Load enrollments
   useEffect(() => {
     if (!courseId) {
+      setLoading(true);
       loadAllEnrollments();
     } else {
+      setLoading(true);
       checkEnrollment(courseId);
     }
   }, [courseId]);
@@ -34,6 +36,7 @@ export function useEnrollment(courseId?: string) {
   // Load all user enrollments
   const loadAllEnrollments = async () => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
@@ -58,6 +61,7 @@ export function useEnrollment(courseId?: string) {
   // Check if user is enrolled in a specific course
   const checkEnrollment = async (courseId: string) => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
@@ -206,4 +210,3 @@ export function useEnrollment(courseId?: string) {
     refresh: courseId ? () => checkEnrollment(courseId) : loadAllEnrollments,
   };
 }
-

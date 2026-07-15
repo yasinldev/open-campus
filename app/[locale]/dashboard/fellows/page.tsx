@@ -1069,9 +1069,6 @@ export default function DashboardFellowsPage() {
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <Button variant="ghost" onClick={handleIntroClose}>
-                      {isEnglish ? 'Skip tour' : 'Tanıtımı atla'}
-                    </Button>
                     <div className="flex items-center gap-2">
                       {introStep > 0 && (
                         <Button variant="outline" onClick={handleIntroBack}>

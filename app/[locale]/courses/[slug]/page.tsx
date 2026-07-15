@@ -3,59 +3,73 @@
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  BookOpen,
-  Clock,
-  Users,
-  Star,
-  Calendar,
-  Target,
-  Award,
-  ChevronLeft,
-  PlayCircle,
-  CheckCircle2,
-  CheckCircle,
-  Lock,
-  TrendingUp,
-  Heart,
-  Video,
-  Download,
-  Share2,
-  Bookmark,
-  Globe,
-  Award as CertificateIcon,
-  Zap,
-  MessageCircle,
-  BarChart3,
-  Trophy,
-} from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useEnrollment } from '@/lib/hooks/use-enrollment';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import {
+  ArrowUpRight,
+  BookOpen,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Download,
+  Globe,
+  Heart,
+  Layers,
+  Lock,
+  PlayCircle,
+  Share2,
+  Star,
+  Target,
+  Users,
+  Zap,
+} from 'lucide-react';
+
+type LearnItem = {
+  title: string;
+  description?: string;
+};
+
+type Metadata = {
+  about?: string;
+  key_points?: Array<{
+    section?: string;
+    points?: string[];
+  }>;
+  what_you_will_learn?: LearnItem[] | string[] | string;
+  requirements?: string[] | string;
+  instructor?: {
+    name?: string;
+    role?: string;
+    avatar_url?: string;
+    bio?: string;
+  };
+};
 
 export default function CoursePage() {
   const params = useParams();
   const router = useRouter();
-  const locale = params?.locale as string || 'en';
+  const locale = (params?.locale as string) || 'en';
   const slug = params?.slug as string;
-  const supabase = createClient();
+
+  const supabase = useMemo(() => createClient(), []);
 
   const [course, setCourse] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
-  
-  // Enrollment hook
-  const { 
-    isEnrolled, 
-    currentEnrollment, 
-    enrolling, 
-    enroll 
+
+  const {
+    isEnrolled,
+    currentEnrollment,
+    enrolling,
+    loading: enrollmentLoading,
+    enroll,
   } = useEnrollment(course?.id);
 
   useEffect(() => {
@@ -65,7 +79,7 @@ export default function CoursePage() {
           .from('courses')
           .select('*')
           .eq('slug', slug)
-          .maybeSingle(); // Use maybeSingle() instead of single() to handle 0 rows gracefully
+          .maybeSingle();
 
         if (error) {
           console.error('Error loading course:', error);
@@ -80,8 +94,135 @@ export default function CoursePage() {
         setLoading(false);
       }
     };
+
     loadCourse();
   }, [slug, supabase]);
+
+  const parsedMetadata: Metadata = useMemo(() => {
+    const raw = course?.course_metadata;
+    if (!raw) return {};
+
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch (error) {
+        console.warn('Failed to parse course_metadata string', error);
+        return {};
+      }
+    }
+
+    if (typeof raw === 'object') {
+      return raw as Metadata;
+    }
+
+    return {};
+  }, [course?.course_metadata]);
+
+  const learnItems: LearnItem[] = useMemo(() => {
+    const candidates: Array<Metadata['what_you_will_learn']> = [
+      course?.what_you_will_learn,
+      parsedMetadata?.what_you_will_learn,
+    ];
+
+    const normalized: LearnItem[] = [];
+
+    const pushItem = (item: unknown, section?: string) => {
+      if (!item) return;
+      if (typeof item === 'string') {
+        const trimmed = item.trim();
+        if (trimmed) {
+          normalized.push({
+            title: trimmed,
+            description: section && section !== trimmed ? section : undefined,
+          });
+        }
+        return;
+      }
+      if (typeof item === 'object' && item !== null) {
+        const maybeItem = item as Partial<LearnItem>;
+        const title = typeof maybeItem.title === 'string' ? maybeItem.title.trim() : '';
+        const description =
+          typeof maybeItem.description === 'string' && maybeItem.description.trim()
+            ? maybeItem.description.trim()
+            : undefined;
+        if (title || description) {
+          normalized.push({
+            title: title || (locale === 'en' ? 'Learning outcome' : 'Öğrenim hedefi'),
+            description,
+          });
+        }
+      }
+    };
+
+    candidates.forEach((source) => {
+      if (!source) return;
+
+      if (Array.isArray(source)) {
+        source.forEach((entry) => {
+          if (typeof entry === 'object' && entry && 'points' in (entry as any) && Array.isArray((entry as any).points)) {
+            const { section, points } = entry as { section?: string; points?: unknown[] };
+            points?.forEach((point) => pushItem(point, section));
+          } else {
+            pushItem(entry);
+          }
+        });
+        return;
+      }
+
+      if (typeof source === 'string') {
+        const trimmed = source.trim();
+        if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) {
+              parsed.forEach((entry) => pushItem(entry));
+              return;
+            }
+          } catch (error) {
+            console.warn('Failed to parse what_you_will_learn JSON', error);
+          }
+        }
+
+        trimmed
+          .split(/\r?\n|\u2022|-/)
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .forEach((entry) => pushItem(entry));
+      }
+    });
+
+    return normalized;
+  }, [course?.what_you_will_learn, parsedMetadata?.what_you_will_learn, locale]);
+
+  const requirements: string[] = useMemo(() => {
+    const rawRequirements = parsedMetadata?.requirements || course?.prerequisites;
+
+    const normalized: string[] = [];
+    if (!rawRequirements) return normalized;
+
+    if (Array.isArray(rawRequirements)) {
+      rawRequirements.forEach((item) => {
+        if (typeof item === 'string' && item.trim()) {
+          normalized.push(item.trim());
+        }
+      });
+      return normalized;
+    }
+
+    if (typeof rawRequirements === 'string') {
+      rawRequirements
+        .split(/\r?\n|\u2022|-/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .forEach((entry) => normalized.push(entry));
+    }
+
+    return normalized;
+  }, [parsedMetadata?.requirements, course?.prerequisites]);
+
+  const keyPointSections = useMemo(() => parsedMetadata?.key_points ?? [], [parsedMetadata?.key_points]);
+
+  const instructor = parsedMetadata?.instructor;
 
   if (loading) {
     return (
@@ -102,8 +243,8 @@ export default function CoursePage() {
             {locale === 'en' ? 'Course Not Found' : 'Kurs Bulunamadı'}
           </h1>
           <p className="text-muted-foreground max-w-md mx-auto">
-            {locale === 'en' 
-              ? 'The course you are looking for does not exist or has been removed.' 
+            {locale === 'en'
+              ? 'The course you are looking for does not exist or has been removed.'
               : 'Aradığınız kurs mevcut değil veya kaldırılmış.'}
           </p>
           <Button asChild>
@@ -117,627 +258,607 @@ export default function CoursePage() {
     );
   }
 
-  // Map database fields to display fields
   const displayCourse = {
     ...course,
-    duration: course.duration_weeks 
+    duration: course.duration_weeks
       ? `${course.duration_weeks} ${locale === 'en' ? 'weeks' : 'hafta'}`
-      : (course.duration || '8 weeks'),
-    students: course.enrollment_count 
+      : course.duration || (locale === 'en' ? '8 weeks' : '8 hafta'),
+    students: course.enrollment_count
       ? `${course.enrollment_count.toLocaleString()} ${locale === 'en' ? 'students' : 'öğrenci'}`
-      : (course.students || '1,234 students'),
+      : course.students || (locale === 'en' ? '1,234 students' : '1.234 öğrenci'),
     rating: course.rating || 4.8,
   };
 
-  const syllabus = course.syllabus || [];
-  const prerequisites = course.prerequisites || [];
-  const completedWeeks = Array.isArray(syllabus) ? syllabus.filter((w: any) => w.completed).length : 0;
-  const totalWeeks = Array.isArray(syllabus) ? syllabus.length : 0;
+  const syllabus = Array.isArray(course.syllabus) ? course.syllabus : [];
+  const totalWeeks = syllabus.length;
+  const completedWeeks = syllabus.filter((week: any) => week?.completed).length;
 
-  const levelColors: Record<string, string> = {
-    intro: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400',
-    intermediate: 'bg-amber-500/10 text-amber-600 border-amber-500/30 dark:text-amber-400',
-    advanced: 'bg-rose-500/10 text-rose-600 border-rose-500/30 dark:text-rose-400',
-    beginner: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400',
-  };
+  const highlightStats = [
+    {
+      icon: Clock,
+      label: locale === 'en' ? 'Duration' : 'Süre',
+      value: displayCourse.duration,
+    },
+    {
+      icon: Users,
+      label: locale === 'en' ? 'Learners' : 'Öğrenci',
+      value: displayCourse.students,
+    },
+    {
+      icon: Star,
+      label: locale === 'en' ? 'Rating' : 'Puan',
+      value: displayCourse.rating,
+    },
+    {
+      icon: Layers,
+      label: locale === 'en' ? 'Modules' : 'Modül',
+      value: totalWeeks || '—',
+    },
+  ];
 
-  const levelLabels: Record<string, string> = {
-    intro: locale === 'en' ? 'Beginner' : 'Başlangıç',
-    intermediate: locale === 'en' ? 'Intermediate' : 'Orta',
-    advanced: locale === 'en' ? 'Advanced' : 'İleri',
-    beginner: locale === 'en' ? 'Beginner' : 'Başlangıç',
+  const aboutText = parsedMetadata?.about || course?.about || course?.summary || '';
+
+  const handleEnrollClick = async () => {
+    try {
+      await enroll(course.id);
+      router.push(`/${locale}/dashboard/courses/${course.slug}`);
+    } catch (error: any) {
+      alert(error.message || (locale === 'en' ? 'Failed to enroll' : 'Kayıt başarısız'));
+    }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Enhanced Background */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-gradient-to-bl from-primary/8 via-primary/4 to-transparent rounded-full blur-[120px]" />
-        <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-blue-500/8 via-purple-500/4 to-transparent rounded-full blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 w-[400px] h-[400px] bg-gradient-to-r from-emerald-500/5 to-cyan-500/5 rounded-full blur-[80px] -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute top-[-200px] right-[-150px] h-[480px] w-[480px] rounded-full bg-primary/10 blur-[160px]" />
+        <div className="absolute bottom-[-220px] left-[-120px] h-[420px] w-[420px] rounded-full bg-blue-500/10 blur-[140px]" />
       </div>
 
-      {/* Navigation Header */}
-      <div className="sticky top-0 z-40 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Button variant="ghost" asChild className="hover:bg-accent/50">
-              <Link href="/dashboard/all-courses" className="flex items-center gap-2">
-                <ChevronLeft className="h-4 w-4" />
-                {locale === 'en' ? 'Back to Courses' : 'Kurslara Dön'}
-              </Link>
+      <div className="relative mx-auto flex w-full max-w-[1300px] flex-col gap-10 px-4 py-6 sm:px-6 lg:px-10 lg:py-12">
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <Button variant="ghost" asChild className="rounded-full px-4">
+            <Link href={`/${locale}/dashboard/all-courses`} className="flex items-center gap-2">
+              <ChevronLeft className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                {locale === 'en' ? 'Back to courses' : 'Kurslara dön'}
+              </span>
+            </Link>
+          </Button>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-full px-3"
+              onClick={() => setIsFavorite(!isFavorite)}
+            >
+              <Heart className={`h-4 w-4 ${isFavorite ? 'fill-rose-500 text-rose-500' : ''}`} />
             </Button>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="hover:bg-accent/50">
-                <Share2 className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="hover:bg-accent/50">
-                <Bookmark className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button variant="ghost" size="sm" className="rounded-full px-3">
+              <Share2 className="h-4 w-4" />
+            </Button>
           </div>
-        </div>
-      </div>
+        </header>
 
-      <div className="max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8">
-        {/* Hero Section */}
-        <div className="mb-8 lg:mb-12">
-          <div className="grid lg:grid-cols-5 gap-6 lg:gap-8 items-start">
-            {/* Course Thumbnail */}
-            <div className="lg:col-span-2">
-              <div className="relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-border/50">
-                {course.thumbnail_url ? (
-                  <Image
-                    src={course.thumbnail_url}
-                    alt={displayCourse.title}
-                    fill
-                    className="object-cover"
-                    priority
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center space-y-4">
-                      <div className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                        <BookOpen className="w-10 h-10 text-primary" />
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {displayCourse.title}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="absolute top-4 left-4">
-                  <Badge className={`${levelColors[displayCourse.level]} shadow-lg backdrop-blur-sm`}>
-                    {levelLabels[displayCourse.level]}
-                  </Badge>
-                </div>
-                <div className="absolute top-4 right-4">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsFavorite(!isFavorite)}
-                    className="bg-background/80 hover:bg-background/90 backdrop-blur-sm hover:scale-110 transition-all duration-200"
-                  >
-                    <Heart
-                      className={`h-4 w-4 ${
-                        isFavorite ? 'fill-rose-500 text-rose-500' : 'text-muted-foreground'
-                      }`}
-                    />
-                  </Button>
-                </div>
-              </div>
+        <section className="grid gap-6 rounded-3xl border border-border/60 bg-card/70 p-6 shadow-lg backdrop-blur lg:grid-cols-[minmax(0,1fr)_320px] lg:p-10">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-wrap items-center gap-2">
+              {course.level && (
+                <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
+                  {course.level === 'intro'
+                    ? locale === 'en'
+                      ? 'Beginner'
+                      : 'Başlangıç'
+                    : course.level === 'intermediate'
+                      ? locale === 'en'
+                        ? 'Intermediate'
+                        : 'Orta'
+                      : course.level === 'advanced'
+                        ? locale === 'en'
+                          ? 'Advanced'
+                          : 'İleri'
+                        : course.level}
+                </Badge>
+              )}
+              {course.category && (
+                <Badge variant="outline" className="rounded-full border-primary/30 px-3 py-1 text-xs font-medium text-primary">
+                  {course.category}
+                </Badge>
+              )}
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium">
+                {locale === 'en' ? '100% free access' : '%100 ücretsiz erişim'}
+              </Badge>
             </div>
 
-            {/* Course Info */}
-            <div className="lg:col-span-3 space-y-6">
-              <div className="space-y-4">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground tracking-tight">
-                  {displayCourse.title}
-                </h1>
-                <p className="text-lg sm:text-xl text-muted-foreground leading-relaxed">
-                  {displayCourse.summary}
+            <div className="space-y-4">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+                {course.title}
+              </h1>
+              {course.summary && (
+                <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
+                  {course.summary}
                 </p>
-              </div>
-
-              {/* Enhanced Stats Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
-                  <Clock className="h-5 w-5 text-primary mx-auto mb-2" />
-                  <div className="text-sm font-medium text-foreground">{displayCourse.duration}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {locale === 'en' ? 'Duration' : 'Süre'}
-                  </div>
-                </div>
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
-                  <Users className="h-5 w-5 text-blue-500 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-foreground">{displayCourse.students}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {locale === 'en' ? 'Students' : 'Öğrenci'}
-                  </div>
-                </div>
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
-                  <Star className="h-5 w-5 text-amber-500 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-foreground">{displayCourse.rating}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {locale === 'en' ? 'Rating' : 'Puan'}
-                  </div>
-                </div>
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
-                  <CertificateIcon className="h-5 w-5 text-emerald-500 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-foreground">
-                    {locale === 'en' ? 'Certificate' : 'Sertifika'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {locale === 'en' ? 'Included' : 'Dahil'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress Bar for Enrolled Users */}
-              {isEnrolled && currentEnrollment && (
-                <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Trophy className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium text-foreground">
-                          {locale === 'en' ? 'Your Progress' : 'İlerlemeniz'}
-                        </span>
-                      </div>
-                      <span className="text-sm font-bold text-primary">
-                        {currentEnrollment.progress_percentage}%
-                      </span>
-                    </div>
-                    <Progress value={currentEnrollment.progress_percentage} className="h-2" />
-                    <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                      <span>{completedWeeks} / {totalWeeks} {locale === 'en' ? 'lessons completed' : 'ders tamamlandı'}</span>
-                      <span>
-                        {currentEnrollment.progress_percentage === 100 
-                          ? (locale === 'en' ? 'Completed' : 'Tamamlandı')
-                          : (locale === 'en' ? 'In Progress' : 'Devam Ediyor')
-                        }
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Main Content Area */}
-        <div className="grid lg:grid-cols-4 gap-6 lg:gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-3 space-y-8">
-            {/* Content Tabs */}
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 bg-muted/50">
-                <TabsTrigger value="overview" className="data-[state=active]:bg-background">
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  {locale === 'en' ? 'Overview' : 'Genel Bakış'}
-                </TabsTrigger>
-                <TabsTrigger value="curriculum" className="data-[state=active]:bg-background">
-                  <Video className="h-4 w-4 mr-2" />
-                  {locale === 'en' ? 'Curriculum' : 'Müfredat'}
-                </TabsTrigger>
-                <TabsTrigger value="instructor" className="data-[state=active]:bg-background">
-                  <Users className="h-4 w-4 mr-2" />
-                  {locale === 'en' ? 'Instructor' : 'Eğitmen'}
-                </TabsTrigger>
-                <TabsTrigger value="reviews" className="data-[state=active]:bg-background">
-                  <Star className="h-4 w-4 mr-2" />
-                  {locale === 'en' ? 'Reviews' : 'Yorumlar'}
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="mt-6 space-y-6">
-                {/* Course Description */}
-                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                  <CardHeader>
-                    <CardTitle className="text-2xl flex items-center gap-2">
-                      <Target className="h-6 w-6 text-primary" />
-                      {locale === 'en' ? 'What You\'ll Learn' : 'Neler Öğreneceksiniz'}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <div className="space-y-3">
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground mb-1">
-                              {locale === 'en' ? 'Core Concepts' : 'Temel Kavramlar'}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {locale === 'en' ? 'Master fundamental principles and theory' : 'Temel prensipleri ve teoriyi öğrenin'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <CheckCircle2 className="h-3 w-3 text-blue-500" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground mb-1">
-                              {locale === 'en' ? 'Hands-on Practice' : 'Uygulamalı Çalışma'}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {locale === 'en' ? 'Build real projects and gain practical experience' : 'Gerçek projeler oluşturun ve pratik deneyim kazanın'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-purple-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <CheckCircle2 className="h-3 w-3 text-purple-500" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground mb-1">
-                              {locale === 'en' ? 'Industry Standards' : 'Sektör Standartları'}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {locale === 'en' ? 'Learn best practices used in top companies' : 'En iyi şirketlerde kullanılan en iyi uygulamaları öğrenin'}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <CheckCircle2 className="h-3 w-3 text-amber-500" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground mb-1">
-                              {locale === 'en' ? 'Career Ready' : 'Kariyer Hazırlığı'}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {locale === 'en' ? 'Build portfolio projects for job interviews' : 'İş mülakatları için portföy projeleri oluşturun'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Prerequisites */}
-                {prerequisites.length > 0 && (
-                  <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                    <CardHeader>
-                      <CardTitle className="text-xl flex items-center gap-2">
-                        <Zap className="h-5 w-5 text-primary" />
-                        {locale === 'en' ? 'Prerequisites' : 'Ön Koşullar'}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        {prerequisites.map((prereq: string, idx: number) => (
-                          <div key={idx} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
-                            <span className="text-sm text-foreground">{prereq}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </TabsContent>
-
-              <TabsContent value="curriculum" className="mt-6 space-y-6">
-                {/* Course Syllabus */}
-                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-2xl flex items-center gap-2">
-                        <Video className="h-6 w-6 text-primary" />
-                        {locale === 'en' ? 'Course Curriculum' : 'Kurs Müfredatı'}
-                      </CardTitle>
-                      {isEnrolled && (
-                        <div className="text-sm text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
-                          {completedWeeks}/{totalWeeks} {locale === 'en' ? 'completed' : 'tamamlandı'}
-                        </div>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {syllabus.length > 0 ? (
-                        syllabus.map((week: any, weekIndex: number) => (
-                          <div
-                            key={weekIndex}
-                            className="group border border-border/50 rounded-xl overflow-hidden hover:border-border transition-colors"
-                          >
-                            <div className="p-4 cursor-pointer" onClick={() => {
-                              // Toggle logic could go here
-                            }}>
-                              <div className="flex items-center gap-4">
-                                <div className="flex-shrink-0">
-                                  {week.locked ? (
-                                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                                      <Lock className="h-4 w-4 text-muted-foreground" />
-                                    </div>
-                                  ) : week.completed ? (
-                                    <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                                    </div>
-                                  ) : (
-                                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                                      <PlayCircle className="h-5 w-5 text-primary" />
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="font-medium text-foreground mb-1">
-                                    {locale === 'en' ? 'Week' : 'Hafta'} {weekIndex + 1}: {week.title || week}
-                                  </div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {typeof week === 'object' && week.topics ? (
-                                      `${week.topics.length} ${locale === 'en' ? 'topics' : 'konu'}`
-                                    ) : (
-                                      locale === 'en' ? 'Click to view details' : 'Detayları görmek için tıklayın'
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {week.duration || '1-2h'}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                          {locale === 'en' ? 'Curriculum will be available soon' : 'Müfredat yakında mevcut olacak'}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="instructor" className="mt-6 space-y-6">
-                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Users className="h-8 w-8 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-xl font-semibold text-foreground mb-2">
-                          {locale === 'en' ? 'AI-Powered Learning' : 'AI Destekli Öğrenme'}
-                        </h3>
-                        <p className="text-muted-foreground mb-4">
-                          {locale === 'en'
-                            ? 'This course is delivered through our advanced AI Fellows system, providing personalized learning experiences tailored to your pace and learning style.'
-                            : 'Bu kurs, hızınıza ve öğrenme tarzınıza göre uyarlanmış kişiselleştirilmiş öğrenme deneyimleri sunan gelişmiş AI Fellows sistemimiz aracılığıyla sunulmaktadır.'}
-                        </p>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <Star className="h-4 w-4 text-amber-500" />
-                            <span>4.9/5 {locale === 'en' ? 'AI Rating' : 'AI Puanı'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <MessageCircle className="h-4 w-4 text-blue-500" />
-                            <span>{locale === 'en' ? '24/7 Support' : '7/24 Destek'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="reviews" className="mt-6 space-y-6">
-                <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-                  <CardContent className="p-6">
-                    <div className="text-center py-8">
-                      <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
-                      <h3 className="text-lg font-semibold text-foreground mb-2">
-                        {locale === 'en' ? 'Reviews Coming Soon' : 'Yorumlar Yakında'}
-                      </h3>
-                      <p className="text-muted-foreground">
-                        {locale === 'en'
-                          ? 'Be among the first to review this course after enrollment'
-                          : 'Kayıt olduktan sonra bu kursu yorumlayan ilk kişiler arasında olun'}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Enhanced Sidebar */}
-          <div className="space-y-6">
-            {/* Enrollment Card */}
-            <Card className="bg-gradient-to-br from-primary/15 via-primary/10 to-primary/5 backdrop-blur-xl border-primary/30">
-              <CardContent className="p-6 space-y-6">
-                {/* Price Section */}
-                <div className="text-center space-y-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {highlightStats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="flex items-center gap-3 rounded-2xl border border-border/60 bg-background/50 p-4"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <stat.icon className="h-4 w-4" />
+                  </div>
                   <div className="space-y-1">
-                    <div className="text-4xl font-bold text-foreground">
-                      {locale === 'en' ? 'Free' : 'Ücretsiz'}
-                    </div>
-                    <div className="text-sm text-muted-foreground line-through opacity-60">
-                      {locale === 'en' ? '$99 Course Value' : '₺2,500 Kurs Değeri'}
-                    </div>
-                  </div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 text-emerald-600 rounded-full text-xs font-medium">
-                    <Zap className="h-3 w-3" />
-                    {locale === 'en' ? 'Limited Time Offer' : 'Sınırlı Süre Teklifi'}
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">{stat.label}</p>
+                    <p className="text-base font-semibold text-foreground">{stat.value}</p>
                   </div>
                 </div>
+              ))}
+            </div>
 
-                {/* What's Included */}
-                <div className="space-y-3">
-                  <h4 className="font-medium text-foreground text-sm">
-                    {locale === 'en' ? 'This course includes:' : 'Bu kurs şunları içerir:'}
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Video className="h-4 w-4 text-primary" />
-                      <span>{locale === 'en' ? 'HD Video Lessons' : 'HD Video Dersleri'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Download className="h-4 w-4 text-primary" />
-                      <span>{locale === 'en' ? 'Downloadable Resources' : 'İndirilebilir Kaynaklar'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <CertificateIcon className="h-4 w-4 text-primary" />
-                      <span>{locale === 'en' ? 'Certificate of Completion' : 'Tamamlama Sertifikası'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Globe className="h-4 w-4 text-primary" />
-                      <span>{locale === 'en' ? 'Lifetime Access' : 'Yaşam Boyu Erişim'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MessageCircle className="h-4 w-4 text-primary" />
-                      <span>{locale === 'en' ? 'AI Assistant Support' : 'AI Asistan Desteği'}</span>
-                    </div>
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-background/60 p-4">
+              {isEnrolled ? (
+                <>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-foreground">
+                      {currentEnrollment?.progress_percentage ?? 0}%
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {locale === 'en' ? 'Completed' : 'Tamamlandı'}
+                    </span>
                   </div>
+                  <Progress
+                    className="h-2 w-36 sm:w-48"
+                    value={currentEnrollment?.progress_percentage ?? 0}
+                  />
+                </>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-semibold text-foreground">
+                    {locale === 'en' ? 'Start learning today' : 'Bugün öğrenmeye başla'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {locale === 'en'
+                      ? 'Join thousands of learners building in-demand skills'
+                      : 'Yüzlerce öğrenciyle talep gören becerileri öğren'}
+                  </span>
                 </div>
+              )}
+            </div>
 
-                {/* Action Button */}
-                {isEnrolled && currentEnrollment?.progress_percentage === 100 ? (
-                  <div className="space-y-3">
-                    <Button size="lg" className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-lg" asChild>
-                      <Link href={`/${locale}/dashboard/courses/${course.slug}`}>
-                        <Trophy className="h-5 w-5 mr-2" />
-                        {locale === 'en' ? 'Course Completed!' : 'Kurs Tamamlandı!'}
-                      </Link>
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full">
-                      <Download className="h-4 w-4 mr-2" />
-                      {locale === 'en' ? 'Download Certificate' : 'Sertifikayı İndir'}
-                    </Button>
-                  </div>
-                ) : isEnrolled ? (
-                  <div className="space-y-3">
-                    <Button size="lg" className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-700 shadow-lg" asChild>
-                      <Link href={`/${locale}/dashboard/courses/${course.slug}`}>
-                        <PlayCircle className="h-5 w-5 mr-2" />
+            <div className="flex flex-wrap items-center gap-3">
+              {enrollmentLoading ? (
+                <Button
+                  size="lg"
+                  className="rounded-full px-6 py-5 text-sm font-semibold"
+                  disabled
+                >
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                  {locale === 'en' ? 'Checking enrollment...' : 'Kayıt kontrol ediliyor...'}
+                </Button>
+              ) : isEnrolled ? (
+                <Button
+                  size="lg"
+                  className="rounded-full px-6 py-5 text-sm font-semibold"
+                  asChild
+                >
+                  <Link href={`/${locale}/dashboard/courses/${course.slug}`}>
+                    {currentEnrollment?.progress_percentage === 100 ? (
+                      <>
+                        <CheckCircle2 className="mr-2 h-5 w-5" />
+                        {locale === 'en' ? 'Review Course' : 'Kursu İncele'}
+                      </>
+                    ) : (
+                      <>
+                        <PlayCircle className="mr-2 h-5 w-5" />
                         {locale === 'en' ? 'Continue Learning' : 'Öğrenmeye Devam Et'}
-                      </Link>
-                    </Button>
-                    <div className="text-center text-xs text-muted-foreground">
-                      {locale === 'en' ? 'Pick up where you left off' : 'Kaldığınız yerden devam edin'}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Button 
-                      size="lg" 
-                      className="w-full bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-700 shadow-lg transition-all duration-200 hover:scale-[1.02]"
-                      onClick={async () => {
-                        try {
-                          await enroll(course.id);
-                          router.push(`/${locale}/dashboard/courses/${course.slug}`);
-                        } catch (error: any) {
-                          alert(error.message || (locale === 'en' ? 'Failed to enroll' : 'Kayıt başarısız'));
-                        }
-                      }}
-                      disabled={enrolling}
-                    >
-                      {enrolling ? (
-                        <>
-                          <div className="h-5 w-5 mr-2 animate-spin rounded-full border-2 border-background border-t-transparent" />
-                          {locale === 'en' ? 'Enrolling...' : 'Kaydoluyor...'}
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="h-5 w-5 mr-2" />
-                          {locale === 'en' ? 'Start Learning Now' : 'Şimdi Öğrenmeye Başla'}
-                        </>
-                      )}
-                    </Button>
-                    <div className="text-center space-y-2">
-                      <div className="text-xs text-muted-foreground">
-                        {locale === 'en' ? '30-day money-back guarantee' : '30 gün para iade garantisi'}
-                      </div>
-                      <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          <span>{displayCourse.students}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-3 w-3 text-amber-500" />
-                          <span>{displayCourse.rating}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                      </>
+                    )}
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="rounded-full px-6 py-5 text-sm font-semibold"
+                  onClick={handleEnrollClick}
+                  disabled={enrolling}
+                >
+                  {enrolling ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                      {locale === 'en' ? 'Enrolling...' : 'Kaydoluyor...'}
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpRight className="mr-2 h-5 w-5" />
+                      {locale === 'en' ? 'Enroll for Free' : 'Ücretsiz Kaydol'}
+                    </>
+                  )}
+                </Button>
+              )}
 
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/70 px-4 py-2 text-xs text-muted-foreground">
+                <Zap className="h-4 w-4 text-emerald-500" />
+                {locale === 'en' ? 'Instant access · No credit card' : 'Anında erişim · Kart gerekmez'}
+              </div>
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
+            {course.thumbnail_url ? (
+              <Image
+                src={course.thumbnail_url}
+                alt={course.title}
+                fill
+                className="object-cover"
+                priority
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <PlayCircle className="h-8 w-8" />
+                </div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {locale === 'en'
+                    ? 'Preview coming soon'
+                    : 'Ön izleme yakında eklenecek'}
+                </p>
+              </div>
+            )}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/90 to-transparent p-6">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-primary" />
+                  {locale === 'en' ? 'Lifetime access' : 'Yaşam boyu erişim'}
+                </span>
+                <span className="flex items-center gap-2">
+                  <Download className="h-4 w-4 text-primary" />
+                  {locale === 'en' ? 'Resources included' : 'Kaynaklar dahil'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="space-y-6">
+            <Card className="border-border/60 bg-card/70">
+              <CardHeader className="space-y-2">
+                <Badge variant="outline" className="w-fit rounded-full border-primary/30 text-xs uppercase tracking-wide text-primary">
+                  {locale === 'en' ? 'Course overview' : 'Kurs özeti'}
+                </Badge>
+                <CardTitle className="text-2xl font-semibold">
+                  {locale === 'en' ? 'What you will learn' : 'Neler öğreneceksiniz'}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {locale === 'en'
+                    ? 'Master essential concepts with hands-on projects and mentorship.'
+                    : 'Uygulamalı projeler ve mentorlukla temel kavramlarda uzmanlaşın.'}
+                </p>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                {learnItems.length > 0 ? (
+                  learnItems.slice(0, 8).map((item, index) => (
+                    <div
+                      key={`${item.title}-${index}`}
+                      className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/60 p-4"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                        {item.description && (
+                          <p className="text-xs text-muted-foreground">{item.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {locale === 'en'
+                      ? 'Learning outcomes for this course will be available soon.'
+                      : 'Bu kurs için öğrenme çıktıları yakında eklenecek.'}
+                  </p>
+                )}
               </CardContent>
             </Card>
 
-            {/* Quick Stats */}
-            <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-              <CardContent className="p-4 space-y-4">
-                <h4 className="font-medium text-foreground text-sm mb-3">
-                  {locale === 'en' ? 'Course Details' : 'Kurs Detayları'}
-                </h4>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Target className="h-4 w-4" />
-                      <span>{locale === 'en' ? 'Level' : 'Seviye'}</span>
+            {aboutText && (
+              <Card className="border-border/60 bg-card/70">
+                <CardHeader className="space-y-2">
+                  <Badge variant="outline" className="w-fit rounded-full border-border/60 text-xs uppercase tracking-wide">
+                    {locale === 'en' ? 'About' : 'Hakkında'}
+                  </Badge>
+                  <CardTitle className="text-2xl font-semibold">
+                    {locale === 'en' ? 'Inside the course' : 'Kursun içeriği'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm leading-relaxed text-muted-foreground">
+                  {aboutText.split('\n').map((paragraph, index) => (
+                    <p key={index}>{paragraph}</p>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="border-border/60 bg-card/70">
+              <CardHeader className="space-y-2">
+                <Badge variant="outline" className="w-fit rounded-full border-border/60 text-xs uppercase tracking-wide">
+                  {locale === 'en' ? 'Curriculum' : 'Müfredat'}
+                </Badge>
+                <CardTitle className="text-2xl font-semibold">
+                  {locale === 'en' ? 'Course syllabus' : 'Kurs müfredatı'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {syllabus.length > 0 ? (
+                  <Accordion type="single" collapsible className="space-y-2">
+                    {syllabus.map((week: any) => (
+                      <AccordionItem
+                        key={week.week}
+                        value={`week-${week.week}`}
+                        className="overflow-hidden rounded-2xl border border-border/60 bg-background/50"
+                      >
+                        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                          <div className="flex items-start gap-3 text-left">
+                            {week.locked ? (
+                              <Lock className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                            ) : week.completed ? (
+                              <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                            ) : (
+                              <PlayCircle className="mt-0.5 h-4 w-4 text-primary" />
+                            )}
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                {locale === 'en' ? 'Week' : 'Hafta'} {week.week}: {week.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {(week.topics?.length || 0)} {locale === 'en' ? 'topics' : 'konu'}
+                              </p>
+                            </div>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-3 px-4 pb-4">
+                          <ul className="space-y-2 pl-7 text-sm text-muted-foreground">
+                            {(week.topics || []).map((topic: string, index: number) => (
+                              <li key={`${week.week}-topic-${index}`} className="leading-relaxed">
+                                {topic}
+                              </li>
+                            ))}
+                          </ul>
+                          {!week.locked && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="rounded-full px-4"
+                              disabled={week.completed}
+                            >
+                              {week.completed
+                                ? locale === 'en'
+                                  ? 'Completed'
+                                  : 'Tamamlandı'
+                                : locale === 'en'
+                                  ? 'Start module'
+                                  : 'Modülü başlat'}
+                            </Button>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-8 text-center text-sm text-muted-foreground">
+                    {locale === 'en'
+                      ? 'Course syllabus is being prepared.'
+                      : 'Kurs müfredatı hazırlanıyor.'}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {keyPointSections.length > 0 && (
+              <Card className="border-border/60 bg-card/70">
+                <CardHeader className="space-y-2">
+                  <Badge variant="outline" className="w-fit rounded-full border-border/60 text-xs uppercase tracking-wide">
+                    {locale === 'en' ? 'Key takeaways' : 'Ana kazanımlar'}
+                  </Badge>
+                  <CardTitle className="text-2xl font-semibold">
+                    {locale === 'en' ? 'Project roadmap' : 'Proje yol haritası'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  {keyPointSections.map((section, sectionIndex) => (
+                    <div key={`section-${sectionIndex}`} className="rounded-2xl border border-border/60 bg-background/50 p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Target className="h-4 w-4 text-primary" />
+                        <p className="text-sm font-semibold text-foreground">
+                          {section.section ||
+                            (locale === 'en' ? 'Learning path' : 'Öğrenme yolu')}
+                        </p>
+                      </div>
+                      <ul className="space-y-2 text-sm text-muted-foreground">
+                        {(section.points || []).map((point, pointIndex) => (
+                          <li key={`section-${sectionIndex}-point-${pointIndex}`} className="leading-relaxed">
+                            {point}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <Badge variant="outline" className={`text-xs ${levelColors[course.level]}`}>
-                      {levelLabels[course.level]}
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {instructor && (
+              <Card className="border-border/60 bg-card/70">
+                <CardHeader className="space-y-2">
+                  <Badge variant="outline" className="w-fit rounded-full border-border/60 text-xs uppercase tracking-wide">
+                    {locale === 'en' ? 'Instructor' : 'Eğitmen'}
+                  </Badge>
+                  <CardTitle className="text-2xl font-semibold">
+                    {locale === 'en' ? 'Meet your mentor' : 'Mentorunuzla tanışın'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-2xl border border-border/60 bg-primary/10 text-primary">
+                    {instructor.avatar_url ? (
+                      <div className="relative h-24 w-24 overflow-hidden rounded-2xl">
+                        <Image
+                          src={instructor.avatar_url}
+                          alt={instructor.name || 'Instructor avatar'}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <Users className="h-10 w-10" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-lg font-semibold text-foreground">{instructor.name}</p>
+                      {instructor.role && (
+                        <p className="text-sm text-muted-foreground">{instructor.role}</p>
+                      )}
+                    </div>
+                    {instructor.bio && (
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {instructor.bio}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <aside className="space-y-6">
+            <Card className="sticky top-24 border-border/60 bg-card/80 p-6 shadow-xl">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    {locale === 'en' ? 'Access' : 'Erişim'}
+                  </p>
+                  <p className="text-3xl font-bold text-foreground">
+                    {locale === 'en' ? 'Free' : 'Ücretsiz'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {locale === 'en'
+                      ? 'Everything included. No credit card required.'
+                      : 'Her şey dahil. Kredi kartı gerekmez.'}
+                  </p>
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-between">
+                    <span>{locale === 'en' ? 'Difficulty' : 'Zorluk'}</span>
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
+                      {course.level || (locale === 'en' ? 'All levels' : 'Tüm seviyeler')}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="h-4 w-4" />
-                      <span>{locale === 'en' ? 'Duration' : 'Süre'}</span>
-                    </div>
-                    <span className="text-foreground font-medium">{displayCourse.duration}</span>
+                    <span>{locale === 'en' ? 'Language' : 'Dil'}</span>
+                    <span className="font-medium text-foreground">{course.language || 'English'}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Globe className="h-4 w-4" />
-                      <span>{locale === 'en' ? 'Language' : 'Dil'}</span>
-                    </div>
-                    <span className="text-foreground font-medium">
-                      {locale === 'en' ? 'English' : 'Türkçe'}
+                    <span>{locale === 'en' ? 'Certificate' : 'Sertifika'}</span>
+                    <span className="font-medium text-foreground">
+                      {locale === 'en' ? 'Included' : 'Dahil'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      <span>{locale === 'en' ? 'Access' : 'Erişim'}</span>
-                    </div>
-                    <span className="text-foreground font-medium">
-                      {locale === 'en' ? 'Lifetime' : 'Yaşam Boyu'}
+                    <span>{locale === 'en' ? 'Access' : 'Erişim'}</span>
+                    <span className="font-medium text-foreground">
+                      {locale === 'en' ? 'Lifetime' : 'Süresiz'}
                     </span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Share Card */}
-            <Card className="bg-card/50 backdrop-blur-sm border-border/50">
-              <CardContent className="p-4">
-                <h4 className="font-medium text-foreground text-sm mb-3">
-                  {locale === 'en' ? 'Share this course' : 'Bu kursu paylaş'}
-                </h4>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1">
-                    <Share2 className="h-4 w-4 mr-2" />
-                    {locale === 'en' ? 'Share' : 'Paylaş'}
-                  </Button>
-                  <Button variant="outline" size="icon">
-                    <Heart className="h-4 w-4" />
-                  </Button>
+                <Button
+                  size="lg"
+                  className="w-full rounded-full py-5 text-sm font-semibold"
+                  onClick={!enrollmentLoading && !isEnrolled ? handleEnrollClick : undefined}
+                  asChild={isEnrolled && !enrollmentLoading}
+                  disabled={enrollmentLoading || enrolling}
+                >
+                  {enrollmentLoading ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                      {locale === 'en' ? 'Checking enrollment...' : 'Kayıt kontrol ediliyor...'}
+                    </>
+                  ) : isEnrolled ? (
+                    <Link href={`/${locale}/dashboard/courses/${course.slug}`}>
+                      <PlayCircle className="mr-2 h-5 w-5" />
+                      {locale === 'en' ? 'Go to course' : 'Kursa git'}
+                    </Link>
+                  ) : enrolling ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
+                      {locale === 'en' ? 'Enrolling...' : 'Kaydoluyor...'}
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpRight className="mr-2 h-5 w-5" />
+                      {locale === 'en' ? 'Enroll for free' : 'Ücretsiz kaydol'}
+                    </>
+                  )}
+                </Button>
+
+                <div className="space-y-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/60 p-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Zap className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {locale === 'en' ? 'Download packages' : 'İndirme paketleri'}
+                      </p>
+                      <p className="text-xs">
+                        {locale === 'en'
+                          ? 'Workspaces, datasets and starter kits'
+                          : 'Çalışma alanları, veri setleri ve başlangıç paketleri'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-background/60 p-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Target className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {locale === 'en' ? 'Hands-on projects' : 'Uygulamalı projeler'}
+                      </p>
+                      <p className="text-xs">
+                        {locale === 'en'
+                          ? 'Build portfolio-ready experiences'
+                          : 'Portföye hazır projeler geliştir'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
 
-          </div>
-        </div>
+                {requirements.length > 0 && (
+                  <div className="space-y-2 rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <p className="text-sm font-semibold text-foreground">
+                      {locale === 'en' ? 'You will need' : 'Gereksinimler'}
+                    </p>
+                    <ul className="space-y-2 text-xs text-muted-foreground">
+                      {requirements.map((requirement, index) => (
+                        <li key={`requirement-${index}`} className="flex items-start gap-2">
+                          <ChevronRight className="mt-0.5 h-3 w-3 text-primary" />
+                          <span>{requirement}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </aside>
+        </section>
       </div>
     </div>
   );

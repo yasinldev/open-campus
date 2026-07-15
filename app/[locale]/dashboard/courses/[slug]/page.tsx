@@ -55,7 +55,7 @@ export default function CourseLearnPage() {
   const router = useRouter();
   const locale = params?.locale as string || 'en';
   const slug = params?.slug as string;
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
 
   const [course, setCourse] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -75,8 +75,11 @@ export default function CourseLearnPage() {
   const [volume, setVolume] = useState(100);
   const [isMuted, setIsMuted] = useState(false);
   const [maxWatchedProgress, setMaxWatchedProgress] = useState(0); // Track maximum watched progress
+  const [lessonDurations, setLessonDurations] = useState<Record<string, string>>({});
+  const [showMobileControls, setShowMobileControls] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mobileControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Article viewer states
   const [isArticleFullscreen, setIsArticleFullscreen] = useState(false);
@@ -100,7 +103,7 @@ export default function CourseLearnPage() {
       }
     };
     checkAuth();
-  }, [router, locale]);
+  }, [router, locale, supabase]);
 
   // Load course from database
   useEffect(() => {
@@ -164,6 +167,30 @@ export default function CourseLearnPage() {
     fetchUserProgress();
   }, [course?.id, supabase, isAuthenticated]);
 
+  function normalizeDuration(week: any): string {
+    if (!week) return '';
+    const seconds = typeof week?.duration_seconds === 'number' ? week.duration_seconds : undefined;
+    if (typeof seconds === 'number' && !Number.isNaN(seconds) && seconds > 0) {
+      return formatTime(seconds);
+    }
+
+    const minutes = typeof week?.duration_minutes === 'number' ? week.duration_minutes : undefined;
+    if (typeof minutes === 'number' && !Number.isNaN(minutes) && minutes > 0) {
+      const rounded = Math.round(minutes);
+      return `${rounded} min`;
+    }
+
+    const raw = week?.duration ?? week?.estimated_duration ?? week?.duration_text ?? week?.length;
+    if (typeof raw === 'number' && !Number.isNaN(raw) && raw > 0) {
+      const rounded = Math.round(raw);
+      return `${rounded} min`;
+    }
+    if (typeof raw === 'string') {
+      return raw;
+    }
+    return '';
+  }
+
   // Compute derived data (safe even if course is null)
   // Get lessons from course.syllabus or fallback to mock
   // Use useMemo to prevent unnecessary re-renders and maintain stable references
@@ -177,7 +204,7 @@ export default function CourseLearnPage() {
             week: week.week,
             title: week.title || `Week ${week.week}`,
             type: week.type || (week.video_url ? 'video' : 'reading'), // Use week.type if available
-            duration: '45 min',
+            duration: normalizeDuration(week),
             completed: userProgress[lessonId] || false, // Get from user progress
             locked: false,
             video_url: week.video_url,
@@ -200,6 +227,30 @@ export default function CourseLearnPage() {
   const currentLesson = useMemo(() => {
     return lessons.find((l: any) => l.id === currentLessonId) || lessons[0];
   }, [lessons, currentLessonId]);
+
+  useEffect(() => {
+    if (lessons.length === 0) return;
+    setLessonDurations((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      const activeIds = new Set<string>();
+      lessons.forEach((lesson: any) => {
+        activeIds.add(lesson.id);
+        const normalized = typeof lesson.duration === 'string' ? lesson.duration : '';
+        if (normalized && !next[lesson.id]) {
+          next[lesson.id] = normalized;
+          changed = true;
+        }
+      });
+      Object.keys(next).forEach((id) => {
+        if (!activeIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [lessons]);
 
   // Generate signed URL for video
   useEffect(() => {
@@ -512,7 +563,6 @@ export default function CourseLearnPage() {
         } else {
           await videoRef.current.play();
         }
-        setIsPlaying(!isPlaying);
       } catch (error) {
         console.error('Video playback error:', error);
         // Video can't play, might be loading or invalid
@@ -537,7 +587,19 @@ export default function CourseLearnPage() {
 
   const handleVideoLoadedMetadata = () => {
     if (videoRef.current) {
-      setVideoDuration(videoRef.current.duration);
+      const durationSeconds = videoRef.current.duration;
+      setVideoDuration(durationSeconds);
+      if (currentLesson?.id) {
+        const formattedDuration = formatTime(durationSeconds);
+        setLessonDurations((prev) => {
+          if (prev[currentLesson.id] === formattedDuration) return prev;
+          return {
+            ...prev,
+            [currentLesson.id]: formattedDuration,
+          };
+        });
+      }
+      revealMobileControls(2500);
     }
   };
 
@@ -547,6 +609,7 @@ export default function CourseLearnPage() {
     setMaxWatchedProgress(100); // Mark as fully watched
     // Auto mark as complete
     handleMarkComplete();
+    keepMobileControlsVisible();
   };
 
   const handleSeek = (value: number) => {
@@ -578,12 +641,55 @@ export default function CourseLearnPage() {
     }
   };
 
-  const formatTime = (seconds: number) => {
+  const isDesktopViewport = () =>
+    typeof window !== 'undefined' && window.innerWidth >= 640;
+
+  function keepMobileControlsVisible() {
+    if (isDesktopViewport()) return;
+    if (mobileControlsTimeout.current) {
+      clearTimeout(mobileControlsTimeout.current);
+      mobileControlsTimeout.current = null;
+    }
+    setShowMobileControls(true);
+  }
+
+  function revealMobileControls(autoHideMs = 3500) {
+    if (isDesktopViewport()) return;
+    keepMobileControlsVisible();
+    if (autoHideMs > 0) {
+      mobileControlsTimeout.current = setTimeout(() => {
+        setShowMobileControls(false);
+        mobileControlsTimeout.current = null;
+      }, autoHideMs);
+    }
+  }
+
+  function hideMobileControls() {
+    if (mobileControlsTimeout.current) {
+      clearTimeout(mobileControlsTimeout.current);
+      mobileControlsTimeout.current = null;
+    }
+    setShowMobileControls(false);
+  }
+
+  function handleVideoTap() {
+    if (isDesktopViewport()) {
+      togglePlayPause();
+      return;
+    }
+    if (showMobileControls) {
+      hideMobileControls();
+    } else {
+      revealMobileControls();
+    }
+  }
+
+  function formatTime(seconds: number) {
     if (isNaN(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }
 
   const getLessonIcon = (lesson: any) => {
     if (lesson?.type === 'video') return <PlayCircle className="h-4 w-4" />;
@@ -607,6 +713,14 @@ export default function CourseLearnPage() {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [currentLessonIndex, course, lessons.length]);
+
+  useEffect(() => {
+    return () => {
+      if (mobileControlsTimeout.current) {
+        clearTimeout(mobileControlsTimeout.current);
+      }
+    };
+  }, []);
 
   // Conditional renders AFTER all hooks
   if (!isAuthenticated || loading) {
@@ -644,7 +758,7 @@ export default function CourseLearnPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* Main Content Area */}
@@ -707,25 +821,33 @@ export default function CourseLearnPage() {
             </div>
 
             {/* Enhanced Video/Content Area */}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div
-                className={`relative overflow-hidden rounded-3xl border border-border/60 bg-card shadow-md ${
-                  isArticleLesson ? 'min-h-[620px]' : 'aspect-video bg-black'
-                }`}
+                className={
+                  isArticleLesson
+                    ? 'relative overflow-hidden rounded-2xl border border-border/60 bg-card shadow-md min-h-[620px]'
+                    : 'relative w-full max-w-full overflow-hidden bg-black aspect-video min-h-[280px] rounded-xl border border-border/60 shadow-md sm:min-h-0 sm:rounded-2xl'
+                }
               >
                 {currentLesson?.type === 'video' && videoUrl ? (
                   <>
                     <video
                       key={videoUrl} // Force re-render when URL changes
                       ref={videoRef}
-                      className="w-full h-full object-contain cursor-pointer"
+                      className="h-full w-full max-w-full max-h-[85vh] cursor-pointer object-cover sm:object-contain"
                       preload="metadata"
-                      onClick={togglePlayPause}
+                      onClick={handleVideoTap}
                       onTimeUpdate={handleVideoTimeUpdate}
                       onLoadedMetadata={handleVideoLoadedMetadata}
                       onEnded={handleVideoEnded}
-                      onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
+                      onPlay={() => {
+                        setIsPlaying(true);
+                        revealMobileControls();
+                      }}
+                      onPause={() => {
+                        setIsPlaying(false);
+                        keepMobileControlsVisible();
+                      }}
                       onError={(e) => {
                         console.error('Video load error:', e);
                         console.error('Video element error details:', videoRef.current?.error);
@@ -738,8 +860,8 @@ export default function CourseLearnPage() {
                         : 'Tarayıcınız video etiketini veya video formatını desteklemiyor.'}
                     </video>
                     
-                    <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/80 via-black/55 to-transparent p-4 sm:p-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-white/90">
+                    <div className="absolute top-0 left-0 right-0 hidden bg-gradient-to-b from-black/80 via-black/55 to-transparent p-6 text-white/90 sm:block">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur">
                             <PlayCircle className="h-4 w-4 text-white" />
@@ -753,48 +875,80 @@ export default function CourseLearnPage() {
                             </span>
                           </div>
                         </div>
-                        {isVideoLesson && !currentLesson?.completed && videoDuration > 0 && (
-                          <>
-                            {showVideoReminder && (
-                              <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white">
-                                <Clock className="h-4 w-4 text-white/70" />
-                                <span>
-                                  {locale === 'en' 
-                                    ? `Watch ${Math.round(50 - maxWatchedProgress)}% more` 
-                                    : `%${Math.round(50 - maxWatchedProgress)} daha izle`}
-                                </span>
-                              </div>
-                            )}
-                            {showFinishWatching && (
-                              <Button 
-                                disabled
-                                size="sm"
-                                className="cursor-not-allowed border border-white/15 bg-white/10 text-white/70"
-                              >
-                                <Clock className="h-4 w-4 mr-2" />
-                                {locale === 'en' ? 'Finish watching' : 'İzlemeyi bitir'}
-                              </Button>
-                            )}
-                            {canShowCompleteAction && (
-                              <Button 
-                                onClick={handleMarkComplete} 
-                                size="sm"
-                                className="border border-emerald-400/40 bg-emerald-500/80 text-white shadow-sm transition-colors duration-150 hover:bg-emerald-500"
-                              >
-                                <CheckCircle2 className="h-4 w-4 mr-2" />
-                                <span className="font-medium">{locale === 'en' ? 'Mark Complete' : 'Tamamla'}</span>
-                              </Button>
-                            )}
-                          </>
-                        )}
-                        {currentLesson?.completed && (
-                          <div className="flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/80 px-4 py-2 text-sm font-semibold text-white shadow-sm">
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span>{locale === 'en' ? 'Completed' : 'Tamamlandı'}</span>
-                          </div>
-                        )}
+                        <div className="flex flex-wrap items-center gap-3">
+                          {isVideoLesson && !currentLesson?.completed && videoDuration > 0 && (
+                            <>
+                              {showVideoReminder && (
+                                <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white">
+                                  <Clock className="h-4 w-4 text-white/70" />
+                                  <span>
+                                    {locale === 'en' 
+                                      ? `Watch ${Math.round(50 - maxWatchedProgress)}% more` 
+                                      : `%${Math.round(50 - maxWatchedProgress)} daha izle`}
+                                  </span>
+                                </div>
+                              )}
+                              {showFinishWatching && (
+                                <Button 
+                                  disabled
+                                  size="sm"
+                                  className="cursor-not-allowed border border-white/15 bg-white/10 text-white/70"
+                                >
+                                  <Clock className="h-4 w-4 mr-2" />
+                                  {locale === 'en' ? 'Finish watching' : 'İzlemeyi bitir'}
+                                </Button>
+                              )}
+                              {canShowCompleteAction && (
+                                <Button 
+                                  onClick={handleMarkComplete} 
+                                  size="sm"
+                                  className="border border-emerald-400/40 bg-emerald-500/80 text-white shadow-sm transition-colors duration-150 hover:bg-emerald-500"
+                                >
+                                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                                  <span className="font-medium">{locale === 'en' ? 'Mark Complete' : 'Tamamla'}</span>
+                                </Button>
+                              )}
+                            </>
+                          )}
+                          {currentLesson?.completed && (
+                            <div className="flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/80 px-4 py-2 text-sm font-semibold text-white shadow-sm">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span>{locale === 'en' ? 'Completed' : 'Tamamlandı'}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
+
+                    {showMobileControls && (
+                      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start gap-3 bg-gradient-to-b from-black/85 via-black/55 to-transparent px-4 pb-6 pt-4 text-white/90 sm:hidden">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur">
+                          <PlayCircle className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="line-clamp-2 text-sm font-semibold leading-snug">
+                            {currentLesson?.title}
+                          </span>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-medium text-white/80">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
+                              {locale === 'en' ? 'Video Lesson' : 'Video Ders'}
+                            </span>
+                            {displayedDuration && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-white/70">
+                                <Clock className="h-3 w-3" />
+                                {displayedDuration}
+                              </span>
+                            )}
+                            {currentLesson?.completed && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/80 px-2.5 py-1 text-white">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {locale === 'en' ? 'Completed' : 'Tamamlandı'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     {!isPlaying && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -807,11 +961,12 @@ export default function CourseLearnPage() {
                       </div>
                     )}
 
-                    {/* Custom Video Controls Overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 transition-all duration-300"
-                      style={{ 
+                    {/* Desktop Video Controls Overlay */}
+                    <div
+                      className="absolute bottom-0 left-0 right-0 hidden transition-all duration-300 sm:block"
+                      style={{
                         opacity: isPlaying ? 0 : 1,
-                        transform: isPlaying ? 'translateY(10px)' : 'translateY(0)'
+                        transform: isPlaying ? 'translateY(12px)' : 'translateY(0)',
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.opacity = '1';
@@ -820,83 +975,85 @@ export default function CourseLearnPage() {
                       onMouseLeave={(e) => {
                         if (isPlaying) {
                           e.currentTarget.style.opacity = '0';
-                          e.currentTarget.style.transform = 'translateY(10px)';
+                          e.currentTarget.style.transform = 'translateY(12px)';
                         }
                       }}
                     >
-                      {/* Progress Bar - Full Width */}
-                      <div className="px-3 sm:px-4 pb-2">
-                        <div className="cursor-pointer" onClick={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const percent = ((e.clientX - rect.left) / rect.width) * 100;
-                          handleSeek(percent);
-                        }}>
+                      <div className="px-4 pb-2">
+                        <div
+                          className="cursor-pointer"
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                            handleSeek(percent);
+                          }}
+                        >
                           <div className="h-1 rounded-full bg-white/20">
-                            <div 
-                              className="h-full bg-primary rounded-full relative transition-all"
+                            <div
+                              className="relative h-full rounded-full bg-primary transition-all"
                               style={{ width: `${videoProgress}%` }}
                             >
-                              <div className="absolute right-0 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-primary shadow" />
+                              <div className="absolute right-0 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-primary shadow" />
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Enhanced Controls Bar */}
-                      <div className="bg-gradient-to-t from-black/80 via-black/60 to-transparent px-4 sm:px-6 pb-4 pt-3">
-                        <div className="flex items-center gap-3">
-                          {/* Left Controls */}
+                      <div className="bg-gradient-to-t from-black/85 via-black/70 to-transparent px-6 pb-5 pt-4">
+                        <div className="flex items-center gap-4">
                           <div className="flex items-center gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="flex h-10 w-10 items-center justify-center rounded-full p-0 text-white hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-white/40"
                               onClick={togglePlayPause}
+                              aria-label={isPlaying ? 'Pause video' : 'Play video'}
                             >
-                              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
+                              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="flex h-9 w-9 items-center justify-center rounded-full p-0 text-white hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-white/40"
                               onClick={() => skipTime(-10)}
                               title="10s back"
+                              aria-label="Skip back 10 seconds"
                             >
                               <SkipBack className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="flex h-9 w-9 items-center justify-center rounded-full p-0 text-white hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-white/40"
                               onClick={() => skipTime(10)}
                               title="10s forward"
+                              aria-label="Skip forward 10 seconds"
                             >
                               <SkipForward className="h-4 w-4" />
                             </Button>
-                            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-1">
-                              <span className="font-mono text-sm text-white">
-                                {formatTime(videoCurrentTime)}
-                              </span>
-                              <div className="h-4 w-px bg-white/20" />
-                              <span className="font-mono text-sm text-white/70">
-                                {formatTime(videoDuration)}
-                              </span>
-                            </div>
                           </div>
 
-                          <div className="flex-1" />
+                          <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-1">
+                            <span className="font-mono text-sm text-white">
+                              {formatTime(videoCurrentTime)}
+                            </span>
+                            <div className="h-4 w-px bg-white/20" />
+                            <span className="font-mono text-sm text-white/70">
+                              {formatTime(videoDuration)}
+                            </span>
+                          </div>
 
-                          {/* Right Controls */}
-                          <div className="flex items-center gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                          <div className="ml-auto flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="flex h-9 w-9 items-center justify-center rounded-full p-0 text-white hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-white/40"
                               onClick={toggleMute}
+                              aria-label={isMuted || volume === 0 ? 'Unmute video' : 'Mute video'}
                             >
                               {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                             </Button>
-                            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-1">
+                            <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-1">
                               <input
                                 type="range"
                                 min="0"
@@ -912,12 +1069,121 @@ export default function CourseLearnPage() {
                                   hover:bg-white/40"
                               />
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="flex h-9 w-9 items-center justify-center rounded-full p-0 text-white hover:bg-white/20 focus-visible:ring-1 focus-visible:ring-white/40"
                               onClick={() => videoRef.current?.requestFullscreen()}
                               title="Fullscreen"
+                              aria-label="Enter fullscreen"
+                            >
+                              <Maximize className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mobile Video Controls Overlay */}
+                    <div className="absolute inset-x-0 bottom-0 z-20 sm:hidden">
+                      <div
+                        className={`bg-gradient-to-t from-black/80 via-black/35 to-transparent px-4 pb-4 pt-3 transition-all duration-200 ${
+                          showMobileControls ? 'pointer-events-auto opacity-100 translate-y-0' : 'pointer-events-none opacity-0 translate-y-3'
+                        }`}
+                        onPointerDown={keepMobileControlsVisible}
+                      >
+                        <div
+                          className="cursor-pointer"
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const percent = ((e.clientX - rect.left) / rect.width) * 100;
+                            keepMobileControlsVisible();
+                            handleSeek(percent);
+                          }}
+                        >
+                          <div className="relative h-1 overflow-hidden rounded-full bg-white/30">
+                            <div
+                              className="absolute inset-y-0 left-0 bg-primary"
+                              style={{ width: `${videoProgress}%` }}
+                            >
+                              <div className="absolute right-0 top-1/2 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2 rounded-full bg-primary shadow" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 p-0 text-white hover:bg-white/25"
+                              onClick={() => {
+                                togglePlayPause();
+                                if (isPlaying) {
+                                  keepMobileControlsVisible();
+                                } else {
+                                  revealMobileControls();
+                                }
+                              }}
+                              aria-label={isPlaying ? 'Pause video' : 'Play video'}
+                            >
+                              {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                              onClick={() => {
+                                keepMobileControlsVisible();
+                                skipTime(-10);
+                              }}
+                              aria-label="Skip back 10 seconds"
+                            >
+                              <SkipBack className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                              onClick={() => {
+                                keepMobileControlsVisible();
+                                skipTime(10);
+                              }}
+                              aria-label="Skip forward 10 seconds"
+                            >
+                              <SkipForward className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-1 items-center justify-end gap-2">
+                            <span className="font-mono text-[11px] text-white/80">
+                              {formatTime(videoCurrentTime)}
+                            </span>
+                            <span className="text-white/50">/</span>
+                            <span className="font-mono text-[11px] text-white/60">
+                              {formatTime(videoDuration)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                              onClick={() => {
+                                keepMobileControlsVisible();
+                                toggleMute();
+                              }}
+                              aria-label={isMuted || volume === 0 ? 'Unmute video' : 'Mute video'}
+                            >
+                              {isMuted || volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 p-0 text-white hover:bg-white/20"
+                              onClick={() => {
+                                keepMobileControlsVisible();
+                                videoRef.current?.requestFullscreen();
+                              }}
+                              aria-label="Enter fullscreen"
                             >
                               <Maximize className="h-4 w-4" />
                             </Button>
@@ -1209,7 +1475,7 @@ export default function CourseLearnPage() {
             </div>
 
             {/* Enhanced Lesson Content - Tabs */}
-            <div className="p-6 sm:p-8 lg:p-10 max-w-6xl">
+            <div className="px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="mb-8 grid h-12 w-full grid-cols-4 rounded-2xl border border-border/60 bg-muted/30 p-1.5">
                   <TabsTrigger value="content" className="text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm data-[state=active]:text-foreground">
@@ -1605,7 +1871,9 @@ export default function CourseLearnPage() {
                       </p>
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">
-                          {currentLessonId === lesson.id ? displayedDuration : lesson.duration}
+                          {currentLessonId === lesson.id
+                            ? displayedDuration || lessonDurations[lesson.id] || lesson.duration || '—'
+                            : lessonDurations[lesson.id] || lesson.duration || '—'}
                         </p>
                         {lesson.completed && (
                           <div className="w-2 h-2 rounded-full bg-emerald-500" />
